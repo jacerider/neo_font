@@ -79,7 +79,7 @@ class FontSettings extends SettingsBase {
 
     $form['preview'] = [
       '#type' => 'details',
-      '#title' => $this->t('Enabled Fonts'),
+      '#title' => $this->t('Available Fonts'),
       '#open' => FALSE,
     ];
     foreach ($supportedTypes as $type => $label) {

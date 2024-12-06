@@ -1,0 +1,8 @@
+name: 'Neo | Font'
+type: module
+description: 'Provide functionality for both adding and managing fonts.'
+package: Neo
+version: 0.0.0
+core_version_requirement: ^10 || ^11
+dependencies:
+  - neo:neo

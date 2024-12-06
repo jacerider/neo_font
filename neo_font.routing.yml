@@ -1,0 +1,7 @@
+# neo_font.list:
+#   path: '/admin/config/neo/font'
+#   defaults:
+#     _title: 'Font List'
+#     _controller: '\Drupal\neo_font\Controller\FontListController'
+#   requirements:
+#     _permission: 'administer neo_font'

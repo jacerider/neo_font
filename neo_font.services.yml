@@ -1,0 +1,17 @@
+services:
+  neo_font.settings:
+    parent: neo_settings.repository
+    arguments: ['neo_font']
+  plugin.manager.neo_font:
+    class: Drupal\neo_font\FontPluginManager
+    arguments: ['%app.root%', '@module_handler', '@theme_handler', '@file_system', '@file_url_generator', '@cache.discovery']
+  neo_font.neo_build_event_subscriber:
+    class: '\Drupal\neo_font\EventSubscriber\NeoBuildEventSubscriber'
+    arguments: ['@plugin.manager.neo_font', '@neo_font.settings']
+    tags:
+      - { name: 'event_subscriber' }
+  neo_font.neo_build_inline_event_subscriber:
+    class: '\Drupal\neo_font\EventSubscriber\NeoBuildInlineEventSubscriber'
+    arguments: ['@plugin.manager.neo_font', '@neo_font.settings']
+    tags:
+      - { name: 'event_subscriber' }

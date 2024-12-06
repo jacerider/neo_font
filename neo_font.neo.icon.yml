@@ -1,0 +1,6 @@
+neo_font.fonts:
+  word: fonts
+  icon: font
+neo_font.font:
+  word: font
+  icon: font

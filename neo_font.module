@@ -1,0 +1,48 @@
+<?php
+
+/**
+ * @file
+ * Primary module hooks for Neo | Font module.
+ */
+
+/**
+ * Implements hook_page_attachments().
+ */
+function neo_font_page_attachments(array &$page) {
+  /** @var \Drupal\neo_font\FontPluginManagerInterface $manager */
+  $manager = \Drupal::service('plugin.manager.neo_font');
+  if ($googleUrl = $manager->getGoogleUrl()) {
+    $page['#attached']['html_head'][] = [
+      [
+        '#tag' => 'link',
+        '#attributes' => [
+          'rel' => 'stylesheet',
+          'media' => 'all',
+          'href' => $googleUrl,
+        ],
+      ],
+      'googlefont',
+    ];
+    $page['#attached']['html_head'][] = [
+      [
+        '#tag' => 'link',
+        '#attributes' => [
+          'href' => 'https://fonts.googleapis.com',
+          'rel' => 'preconnect',
+        ],
+      ],
+      'googleapis',
+    ];
+    $page['#attached']['html_head'][] = [
+      [
+        '#tag' => 'link',
+        '#attributes' => [
+          'href' => 'https://fonts.gstatic.com',
+          'rel' => 'preconnect',
+          'crossorigin' => 'anonymous',
+        ],
+      ],
+      'gstatic',
+    ];
+  }
+}

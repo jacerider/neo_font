@@ -1,0 +1,5 @@
+# neo_font.list:
+#   title: Fonts
+#   parent: system.admin_config_neo
+#   description: 'List available fonts.'
+#   route_name: neo_font.list

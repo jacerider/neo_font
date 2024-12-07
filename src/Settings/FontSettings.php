@@ -91,7 +91,7 @@ class FontSettings extends SettingsBase {
           '#header' => [
             $this->t('Label'),
             $this->t('Class'),
-            $this->t('Generic'),
+            $this->t('Family'),
             $this->t('Preview'),
           ],
         ];

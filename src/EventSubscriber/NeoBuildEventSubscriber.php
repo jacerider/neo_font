@@ -1,10 +1,9 @@
 <?php
 
-declare(strict_types = 1);
+declare(strict_types=1);
 
 namespace Drupal\neo_font\EventSubscriber;
 
-use Drupal\Core\Entity\EntityTypeManagerInterface;
 use Drupal\neo_build\Event\NeoBuildEvent;
 use Drupal\neo_font\FontPluginManager;
 use Drupal\neo_settings\SettingsRepositoryInterface;
@@ -29,7 +28,7 @@ class NeoBuildEventSubscriber implements EventSubscriberInterface {
    */
   public function __construct(
     private readonly FontPluginManager $pluginManagerNeoFont,
-    SettingsRepositoryInterface $settings_repository
+    SettingsRepositoryInterface $settings_repository,
   ) {
     $this->settings = $settings_repository->getActive();
   }

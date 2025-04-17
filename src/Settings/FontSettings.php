@@ -5,7 +5,6 @@ namespace Drupal\neo_font\Settings;
 use Drupal\Core\Form\FormBuilderInterface;
 use Drupal\Core\Form\FormStateInterface;
 use Drupal\Core\Messenger\MessengerInterface;
-use Drupal\neo_build\Build;
 use Drupal\neo_font\FontPluginManagerInterface;
 use Drupal\neo_settings\Plugin\SettingsBase;
 use Symfony\Component\DependencyInjection\ContainerInterface;
@@ -40,7 +39,7 @@ class FontSettings extends SettingsBase {
     $plugin_definition,
     MessengerInterface $messenger,
     FormBuilderInterface $form_builder,
-    FontPluginManagerInterface $font_plugin_manager
+    FontPluginManagerInterface $font_plugin_manager,
   ) {
     parent::__construct($configuration, $plugin_id, $plugin_definition, $messenger, $form_builder);
     $this->fontManager = $font_plugin_manager;

@@ -8,14 +8,12 @@ use Drupal\Component\Plugin\Exception\PluginException;
 use Drupal\Core\Cache\CacheBackendInterface;
 use Drupal\Core\Extension\ModuleHandlerInterface;
 use Drupal\Core\Extension\ThemeHandlerInterface;
-use Drupal\Core\File\FileExists;
 use Drupal\Core\File\FileSystemInterface;
 use Drupal\Core\File\FileUrlGeneratorInterface;
 use Drupal\Core\Plugin\DefaultPluginManager;
 use Drupal\Core\Plugin\Discovery\YamlDiscovery;
 use Drupal\Core\Plugin\Factory\ContainerFactory;
 use Drupal\Core\StringTranslation\StringTranslationTrait;
-use Drupal\neo\Helpers\Utilities;
 
 /**
  * Defines a plugin manager to deal with neo_fonts.
@@ -94,7 +92,7 @@ final class FontPluginManager extends DefaultPluginManager implements FontPlugin
     ThemeHandlerInterface $theme_handler,
     FileSystemInterface $file_system,
     FileUrlGeneratorInterface $file_url_generator,
-    CacheBackendInterface $cache_backend
+    CacheBackendInterface $cache_backend,
   ) {
     $this->factory = new ContainerFactory($this);
     $this->moduleHandler = $module_handler;

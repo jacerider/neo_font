@@ -62,7 +62,7 @@ final class FontDefault extends PluginBase implements FontInterface {
     foreach ($this->pluginDefinition['faces'] ?? [] as $face) {
       $faces[] = array_filter([
         'font-family' => "'" . $this->pluginDefinition['family'] . "'",
-        'src' => "url('" . $face['src'] . "')" . ($face['format'] ?? '' ? 'format("' . $face['format'] . '")' : ''),
+        'src' => "url('" . $face['src'] . "')" . ($face['format'] ?? '' ? " format('" . $face['format'] . "')" : ''),
         'font-weight' => (string) ($face['weight'] ?? ''),
         'font-style' => (string) ($face['style'] ?? ''),
         'font-display' => (string) ($face['swap'] ?? 'swap'),

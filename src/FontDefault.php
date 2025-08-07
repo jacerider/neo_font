@@ -60,13 +60,24 @@ final class FontDefault extends PluginBase implements FontInterface {
   public function getFontFaces(): array {
     $faces = [];
     foreach ($this->pluginDefinition['faces'] ?? [] as $face) {
-      $faces[] = array_filter([
-        'font-family' => "'" . $this->pluginDefinition['family'] . "'",
+      $family = $this->pluginDefinition['family'];
+      $weight = (string) ($face['weight'] ?? '');
+      $style = (string) ($face['style'] ?? '');
+      $display = (string) ($face['swap'] ?? 'swap');
+      $range = (string) ($face['unicode'] ?? '');
+      $key = $family . '-' . $weight . '-' . $style . '-' . $display . '-' . $range;
+      if (isset($faces[$key])) {
+        $faces[$key]['src'] .= ",\nurl('" . $face['src'] . "')" . ($face['format'] ?? '' ? " format('" . $face['format'] . "')" : '');
+        continue;
+
+      }
+      $faces[$key] = array_filter([
+        'font-family' => "'" . $family . "'",
         'src' => "url('" . $face['src'] . "')" . ($face['format'] ?? '' ? " format('" . $face['format'] . "')" : ''),
-        'font-weight' => (string) ($face['weight'] ?? ''),
-        'font-style' => (string) ($face['style'] ?? ''),
-        'font-display' => (string) ($face['swap'] ?? 'swap'),
-        'unicode-range' => (string) ($face['unicode'] ?? ''),
+        'font-weight' => $weight,
+        'font-style' => $style,
+        'font-display' => $display,
+        'unicode-range' => $range,
       ]);
     }
     return $faces;

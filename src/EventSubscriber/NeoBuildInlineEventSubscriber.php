@@ -34,7 +34,7 @@ class NeoBuildInlineEventSubscriber implements EventSubscriberInterface {
   }
 
   /**
-   * Subscribe to the user login event dispatched.
+   * Subscribe to the Neo build event dispatched.
    *
    * We inject the CSS variables directly into the DOM so that we do not need
    * to wait for the build to complete before the CSS is applied.

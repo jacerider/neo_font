@@ -34,30 +34,69 @@ class NeoBuildEventSubscriber implements EventSubscriberInterface {
   }
 
   /**
-   * Subscribe to the user login event dispatched.
+   * Subscribe to the Neo build event dispatched.
    *
    * @param \Drupal\neo_build\Event\NeoBuildEvent $event
    *   The neo build event.
    */
   public function onBuild(NeoBuildEvent $event) {
-    $config = $event->getConfig();
+    $collection = $event->getCollection();
+    $theme = [];
+    $base = [];
     $settingTypes = $this->pluginManagerNeoFont->getSettingTypes();
     foreach ($this->pluginManagerNeoFont->getDefinitions() as $definition) {
       $id = $definition['id'];
       /** @var \Drupal\neo_font\FontInterface $instance */
       $instance = $this->pluginManagerNeoFont->createInstance($id);
-      $config['tailwind']['theme']['fontFamily'][$definition['selector']] = explode(', ', $instance->getPropertyValue());
+      $theme['fontFamily'][$definition['selector']] = explode(', ', $instance->getPropertyValue());
       foreach ($settingTypes as $type => $label) {
         if ($id === $this->settings->getValue($type)) {
-          $config['tailwind']['theme']['fontFamily'][$type] = 'var(--font-' . $type . '-family)';
+          $theme['fontFamily'][$type] = 'var(--font-' . $type . '-family)';
         }
       }
-      foreach ($instance->getFontFaces() as $face) {
-        $config['tailwind']['base']['@font-face'][] = $face;
-      }
+      // foreach ($instance->getFontFaces() as $face) {
+      //   $base['@font-face'][] = $face;
+      // }
     }
-    $event->setConfig($config);
+    $collection->addTailwindTheme($theme);
+    $collection->addTailwindBase($base);
   }
+
+  // /**
+  //  * Subscribe to the Neo build event dispatched.
+  //  *
+  //  * @param \Drupal\neo_build\Event\NeoBuildEvent $event
+  //  *   The neo build event.
+  //  */
+  // public function onBuild(NeoBuildEvent $event) {
+  //   $collection = $event->getCollection();
+  //   $theme = [];
+  //   $base = [];
+  //   $components = [];
+  //   $settingTypes = $this->pluginManagerNeoFont->getSettingTypes();
+  //   foreach ($this->pluginManagerNeoFont->getDefinitions() as $definition) {
+  //     $id = $definition['id'];
+  //     // print_r($id);
+  //     /** @var \Drupal\neo_font\FontInterface $instance */
+  //     $instance = $this->pluginManagerNeoFont->createInstance($id);
+  //     $theme['--font-' . $id] = $instance->getPropertyValue();
+  //     // $theme['fontFamily'][$definition['selector']] = explode(', ', $instance->getPropertyValue());
+  //     foreach ($settingTypes as $type => $label) {
+  //       // $theme['--font-' . $type] = $instance->getPropertyValue();
+  //       // $components['.']
+  //       if ($id === $this->settings->getValue($type)) {
+  //         $theme['--font-' . $type] = 'var(--font-' . $id . ')';
+  //       //   $theme['fontFamily'][$type] = 'var(--font-' . $type . '-family)';
+  //       }
+  //     }
+  //     // foreach ($instance->getFontFaces() as $face) {
+  //     //   $base['@font-face'][] = $face;
+  //     // }
+  //   }
+  //   $collection->addTailwindTheme($theme);
+  //   $collection->addTailwindBase($base);
+  //   $collection->addTailwindComponents($components);
+  // }
 
   /**
    * {@inheritdoc}

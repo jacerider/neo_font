@@ -202,7 +202,7 @@ final class FontPluginManager extends DefaultPluginManager implements FontPlugin
       }
       $src = $base_path . '/' . $face['src'];
       if (!file_exists($this->appRoot . '/' . $src)) {
-        throw new PluginException(sprintf('Style font plugin property (%s) references a font file that does not exist.', $plugin_id));
+        throw new PluginException(sprintf('Style font plugin property (%s) references a font file that does not exist. (%s)', $plugin_id, $src));
       }
       $face['src'] = base_path() . $src;
     }

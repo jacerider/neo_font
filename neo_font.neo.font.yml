@@ -13,6 +13,10 @@ mono:
   family: Mono
   type: generic
   generic: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace"
+cursive:
+  family: Cursive
+  type: generic
+  generic: "ui-cursive, 'Brush Script MT', cursive"
 
 # LOCAL
 inter:

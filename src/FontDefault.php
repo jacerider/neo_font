@@ -65,6 +65,9 @@ final class FontDefault extends PluginBase implements FontInterface {
       $style = (string) ($face['style'] ?? '');
       $display = (string) ($face['swap'] ?? 'swap');
       $range = (string) ($face['unicode'] ?? '');
+      $ascentOverride = (string) ($face['ascent-override'] ?? '');
+      $descentOverride = (string) ($face['descent-override'] ?? '');
+      $lineGapOverride = (string) ($face['line-gap-override'] ?? '');
       $key = $family . '-' . $weight . '-' . $style . '-' . $display . '-' . $range;
       if (isset($faces[$key])) {
         $faces[$key]['src'] .= ",\nurl('" . $face['src'] . "')" . ($face['format'] ?? '' ? " format('" . $face['format'] . "')" : '');
@@ -77,6 +80,9 @@ final class FontDefault extends PluginBase implements FontInterface {
         'font-weight' => $weight,
         'font-style' => $style,
         'font-display' => $display,
+        'ascent-override' => $ascentOverride,
+        'descent-override' => $descentOverride,
+        'line-gap-override' => $lineGapOverride,
         'unicode-range' => $range,
       ]);
     }

@@ -63,7 +63,7 @@ final class FontDefault extends PluginBase implements FontInterface {
       $family = $this->pluginDefinition['family'];
       $weight = (string) ($face['weight'] ?? '');
       $style = (string) ($face['style'] ?? '');
-      $display = (string) ($face['swap'] ?? 'swap');
+      $display = (string) ($face['display'] ?? $face['swap'] ?? 'swap');
       $range = (string) ($face['unicode'] ?? '');
       $ascentOverride = (string) ($face['ascent-override'] ?? '');
       $descentOverride = (string) ($face['descent-override'] ?? '');

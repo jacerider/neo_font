@@ -44,10 +44,10 @@ class NeoBuildEventSubscriber implements EventSubscriberInterface {
     $theme = [];
     $base = [];
     $settingTypes = $this->pluginManagerNeoFont->getSettingTypes();
-    foreach ($this->pluginManagerNeoFont->getDefinitions() as $definition) {
+    foreach ($this->pluginManagerNeoFont->getDefinitions() as $plugin_id => $definition) {
       $id = $definition['id'];
       /** @var \Drupal\neo_font\FontInterface $instance */
-      $instance = $this->pluginManagerNeoFont->createInstance($id);
+      $instance = $this->pluginManagerNeoFont->createInstance($plugin_id);
       $theme['fontFamily'][$definition['selector']] = explode(', ', $instance->getPropertyValue());
       foreach ($settingTypes as $type => $label) {
         if ($id === $this->settings->getValue($type)) {

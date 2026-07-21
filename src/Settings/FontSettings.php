@@ -94,9 +94,9 @@ class FontSettings extends SettingsBase {
             $this->t('Preview'),
           ],
         ];
-        foreach ($defs as $definition) {
+        foreach ($defs as $plugin_id => $definition) {
           /** @var \Drupal\neo_font\FontInterface $instance */
-          $instance = $this->fontManager->createInstance($definition['id']);
+          $instance = $this->fontManager->createInstance($plugin_id);
           $row = [];
           $row[]['#markup'] = '<span class="whitespace-nowrap">' . $instance->label() . '</span><br><small>(' . $definition['id'] . ')</small>';
           $row[]['#markup'] = '<span class="whitespace-nowrap"><pre>.font-' . $definition['selector'] . '</pre></span>';

@@ -54,8 +54,14 @@ class NeoBuildInlineEventSubscriber implements EventSubscriberInterface {
           $event->addCssValue('--font-' . $type . '-family', $instance->getPropertyValue());
         }
       }
-      foreach ($instance->getFontFaces() as $face) {
-        $event->addCssValue($face['src'], $face, '@font-face');
+      // Key on the face id, not `src`: in this group the key identifies the
+      // rule and is never printed, and one file can back several rules. A
+      // variable font declared per weight — how Google Fonts lists one —
+      // shared a `src`, so the rules overwrote each other and every weight
+      // resolved to the survivor. getFontFaces() already keys by
+      // family-weight-style-display-range and merges true duplicates.
+      foreach ($instance->getFontFaces() as $faceId => $face) {
+        $event->addCssValue($faceId, $face, '@font-face');
       }
     }
     $event->addCacheTags(['config:neo_font.settings']);

@@ -42,7 +42,6 @@ class NeoBuildEventSubscriber implements EventSubscriberInterface {
   public function onBuild(NeoBuildEvent $event) {
     $collection = $event->getCollection();
     $theme = [];
-    $base = [];
     $settingTypes = $this->pluginManagerNeoFont->getSettingTypes();
     foreach ($this->pluginManagerNeoFont->getDefinitions() as $plugin_id => $definition) {
       $id = $definition['id'];
@@ -56,7 +55,6 @@ class NeoBuildEventSubscriber implements EventSubscriberInterface {
       }
     }
     $collection->addTailwindTheme($theme);
-    $collection->addTailwindBase($base);
   }
 
   /**

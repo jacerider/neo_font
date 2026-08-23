@@ -14,6 +14,7 @@ use Drupal\Core\Plugin\DefaultPluginManager;
 use Drupal\Core\Plugin\Discovery\YamlDiscovery;
 use Drupal\Core\Plugin\Factory\ContainerFactory;
 use Drupal\Core\StringTranslation\StringTranslationTrait;
+use Psr\Log\LoggerInterface;
 
 /**
  * Defines a plugin manager to deal with neo_fonts.
@@ -71,6 +72,8 @@ final class FontPluginManager extends DefaultPluginManager implements FontPlugin
 
   /**
    * {@inheritdoc}
+   *
+   * @var array<string, mixed>
    */
   protected $defaults = [
     'id' => '',
@@ -85,6 +88,22 @@ final class FontPluginManager extends DefaultPluginManager implements FontPlugin
 
   /**
    * Constructs FontPluginManager object.
+   *
+   * @param string $appRoot
+   *   The app root.
+   * @param \Drupal\Core\Extension\ModuleHandlerInterface $module_handler
+   *   The module handler.
+   * @param \Drupal\Core\Extension\ThemeHandlerInterface $theme_handler
+   *   The theme handler.
+   * @param \Drupal\Core\File\FileSystemInterface $file_system
+   *   The file system.
+   * @param \Drupal\Core\File\FileUrlGeneratorInterface $file_url_generator
+   *   The file url generator.
+   * @param \Drupal\Core\Cache\CacheBackendInterface $cache_backend
+   *   The discovery cache backend.
+   * @param \Psr\Log\LoggerInterface $logger
+   *   The neo_font logger channel. Injected rather than reached for through
+   *   \Drupal::logger(), which the site's standards treat as a finding.
    */
   public function __construct(
     private readonly string $appRoot,
@@ -93,6 +112,7 @@ final class FontPluginManager extends DefaultPluginManager implements FontPlugin
     FileSystemInterface $file_system,
     FileUrlGeneratorInterface $file_url_generator,
     CacheBackendInterface $cache_backend,
+    private readonly LoggerInterface $logger,
   ) {
     $this->factory = new ContainerFactory($this);
     $this->moduleHandler = $module_handler;
@@ -117,16 +137,21 @@ final class FontPluginManager extends DefaultPluginManager implements FontPlugin
 
   /**
    * {@inheritdoc}
+   *
+   * @param string $provider
+   *   The provider to check for.
    */
-  protected function providerExists($provider) {
+  protected function providerExists($provider): bool {
     return $this->moduleHandler->moduleExists($provider) || $this->themeHandler->themeExists($provider);
   }
 
   /**
    * {@inheritdoc}
+   *
+   * @return array<string, array<string, mixed>>
+   *   The font definitions, keyed by plugin id.
    */
-  protected function findDefinitions() {
-    /** @var \Drupal\Core\File\FileSystemInterface $file_system */
+  protected function findDefinitions(): array {
     // $file_system = \Drupal::service('file_system');
     // $file_system->deleteRecursive($this->directory);
     $definitions = parent::findDefinitions();
@@ -143,8 +168,13 @@ final class FontPluginManager extends DefaultPluginManager implements FontPlugin
 
   /**
    * {@inheritdoc}
+   *
+   * @param array<string, mixed> $definition
+   *   The font definition to process, by reference.
+   * @param string $plugin_id
+   *   The definition's plugin id.
    */
-  public function processDefinition(&$definition, $plugin_id) {
+  public function processDefinition(&$definition, $plugin_id): void {
     parent::processDefinition($definition, $plugin_id);
 
     if (empty($definition['family'])) {
@@ -167,6 +197,27 @@ final class FontPluginManager extends DefaultPluginManager implements FontPlugin
       throw new PluginException(sprintf('Style font plugin property (%s) definition "id" conflicts with a setting type.', $plugin_id));
     }
 
+    // The selector is the half of a definition that reaches CSS, and it shares
+    // its keyspace with the font roles: a font selecting on a role's name and
+    // that role write the same key, and one of the two is silently lost. Only
+    // an explicitly declared selector can get here — a selector left undeclared
+    // takes the definition's id, and an id equal to a role name was refused
+    // immediately above.
+    //
+    // This reports rather than refuses on purpose. The refusal belongs to a
+    // later release, so that a site already carrying a colliding declaration
+    // gets one released version that warns it before one that fails its cache
+    // rebuild. Nothing here says which of the two entries wins: that is the
+    // role resolver's subject, and this message has to stay true either side
+    // of it.
+    if (isset($this->getSettingTypes()[(string) $definition['selector']])) {
+      $this->logger->warning('The font %font declares the selector %selector, which is also the name of the %role font role. Rename the selector: a font selector matching a font role name is reported now and will be refused in a future release.', [
+        '%font' => $plugin_id,
+        '%selector' => $definition['selector'],
+        '%role' => $definition['selector'],
+      ]);
+    }
+
     // Skip generic font types.
     if ($definition['type'] === 'generic') {
       return;
@@ -174,15 +225,20 @@ final class FontPluginManager extends DefaultPluginManager implements FontPlugin
 
     switch ($definition['type']) {
       case 'local':
-        $this->processDefinitionLocal($definition, $plugin_id);
+        $this->processDefinitionLocal($definition, (string) $plugin_id);
         break;
     }
   }
 
   /**
    * Process a local font definition.
+   *
+   * @param array<string, mixed> $definition
+   *   The font definition to process, by reference.
+   * @param string $plugin_id
+   *   The definition's plugin id.
    */
-  protected function processDefinitionLocal(&$definition, $plugin_id) {
+  protected function processDefinitionLocal(array &$definition, string $plugin_id): void {
     $provider = $definition['provider'];
     if ($this->moduleHandler->moduleExists($provider)) {
       $base_path = $this->moduleHandler->getModule($provider)->getPath();
@@ -232,6 +288,9 @@ final class FontPluginManager extends DefaultPluginManager implements FontPlugin
 
   /**
    * {@inheritDoc}
+   *
+   * @return array<string, \Drupal\Core\StringTranslation\TranslatableMarkup>
+   *   The supported font types, keyed by machine name.
    */
   public function getSupportedTypes(): array {
     return [
@@ -243,6 +302,9 @@ final class FontPluginManager extends DefaultPluginManager implements FontPlugin
 
   /**
    * {@inheritDoc}
+   *
+   * @return array<string, \Drupal\Core\StringTranslation\TranslatableMarkup>
+   *   The font roles, keyed by role name.
    */
   public function getSettingTypes(): array {
     return [

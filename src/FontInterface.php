@@ -20,9 +20,21 @@ interface FontInterface {
   public function getPropertyValue(): string;
 
   /**
+   * Returns the font selector.
+   *
+   * The selector is the one definition property that reaches CSS: it names the
+   * `.font-{selector}` utility the font emits. Consumers read it here rather
+   * than out of a raw definition array.
+   *
+   * @return string
+   *   The font selector.
+   */
+  public function getSelector(): string;
+
+  /**
    * Generates a preview of the font with various weights.
    *
-   * @return array
+   * @return array<string, mixed>
    *   A render array containing the font preview.
    */
   public function preview(): array;
@@ -34,9 +46,9 @@ interface FontInterface {
    * plugin's configuration. Each font face includes properties such as
    * 'font-family', 'src', 'font-weight', and 'font-style'.
    *
-   * @return array
-   *   An array of font face definitions, where each definition is an
-   *   associative array containing the following keys:
+   * @return array<string, array<string, string>>
+   *   An array of font face definitions, keyed by a de-duplication key, where
+   *   each definition is an associative array containing the following keys:
    *   - 'font-family': The font family name.
    *   - 'src': The source URL of the font.
    *   - 'font-weight': (optional) The weight of the font.

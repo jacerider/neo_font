@@ -17,7 +17,7 @@ final class FontDefault extends PluginBase implements FontInterface {
    */
   public function label(): string {
     // The title from YAML file discovery may be a TranslatableMarkup object.
-    return (string) $this->pluginDefinition['label'];
+    return (string) $this->getDefinitionValue('label');
   }
 
   /**
@@ -25,14 +25,23 @@ final class FontDefault extends PluginBase implements FontInterface {
    */
   public function getPropertyValue(): string {
     $values = [];
-    if (!empty($this->pluginDefinition['family'])) {
-      [$family] = explode(':', $this->pluginDefinition['family']);
-      $values[] = "'" . $family . "'";
+    $family = (string) ($this->getDefinitionValue('family') ?? '');
+    if (!empty($family)) {
+      [$name] = explode(':', $family);
+      $values[] = "'" . $name . "'";
     }
-    if (!empty($this->pluginDefinition['generic'])) {
-      $values[] = $this->pluginDefinition['generic'];
+    $generic = (string) ($this->getDefinitionValue('generic') ?? '');
+    if (!empty($generic)) {
+      $values[] = $generic;
     }
     return implode(', ', $values);
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function getSelector(): string {
+    return (string) $this->getDefinitionValue('selector');
   }
 
   /**
@@ -46,7 +55,7 @@ final class FontDefault extends PluginBase implements FontInterface {
     return [
       '#type' => 'container',
       '#attributes' => [
-        'class' => ['block text-3xl font-' . $this->pluginDefinition['selector']],
+        'class' => ['block text-3xl font-' . $this->getSelector()],
       ],
       'markup' => [
         '#markup' => Markup::create('<div>' . $text . '</div>'),
@@ -59,8 +68,13 @@ final class FontDefault extends PluginBase implements FontInterface {
    */
   public function getFontFaces(): array {
     $faces = [];
-    foreach ($this->pluginDefinition['faces'] ?? [] as $face) {
-      $family = $this->pluginDefinition['family'];
+    $definitionFaces = $this->getDefinitionValue('faces');
+    $definitionFaces = is_array($definitionFaces) ? $definitionFaces : [];
+    $family = (string) ($this->getDefinitionValue('family') ?? '');
+    foreach ($definitionFaces as $face) {
+      if (!is_array($face)) {
+        continue;
+      }
       $weight = (string) ($face['weight'] ?? '');
       $style = (string) ($face['style'] ?? '');
       $display = (string) ($face['display'] ?? $face['swap'] ?? 'swap');
@@ -87,6 +101,24 @@ final class FontDefault extends PluginBase implements FontInterface {
       ]);
     }
     return $faces;
+  }
+
+  /**
+   * Reads one property from the plugin definition.
+   *
+   * PluginBase types the definition as an array or a definition object; YAML
+   * discovery only ever produces the array, so this narrows it in one place
+   * rather than at every read.
+   *
+   * @param string $key
+   *   The definition property to read.
+   *
+   * @return mixed
+   *   The property value, or NULL when the definition does not carry it.
+   */
+  private function getDefinitionValue(string $key): mixed {
+    $definition = $this->pluginDefinition;
+    return is_array($definition) ? ($definition[$key] ?? NULL) : NULL;
   }
 
 }

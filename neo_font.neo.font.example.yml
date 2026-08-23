@@ -190,11 +190,17 @@ roboto:
       format: truetype
 
 # GOOGLE
-inter:
+#
+# 'selector' sets the class suffix of the generated `.font-{selector}` utility
+# and defaults to the machine id. Here it separates the CDN-served Inter from
+# the local Inter declared above. A selector must never be one of the font role
+# names (primary, secondary, accent, heading, ui): that collision is reported
+# today and will be refused in a future release.
+inter-google:
   family: Inter
   type: google
   generic: sans
-  selector: ui
+  selector: inter-cdn
   spec: 'ital,opsz,wght@0,14..32,100..900;1,14..32,100..900'
 
 droid-sans:

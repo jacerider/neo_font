@@ -51,7 +51,8 @@ inter:                 # machine id → utility `.font-inter`, class scope `-`�
   family: Inter        # REQUIRED — the CSS family name
   type: local          # REQUIRED — local | google | generic
   generic: sans        # a generic id (local/google) OR a raw fallback stack (generic)
-  selector: ui         # optional — the `.font-{selector}` class; defaults to id
+  selector: brand      # optional — the `.font-{selector}` class; defaults to id.
+                       # NEVER a role name — that is reported (see Gotchas)
   faces: […]           # REQUIRED for type: local (see below)
   spec: 'ital,wght@…'  # for type: google — the Google `css2` spec string
 ```
@@ -131,11 +132,17 @@ Per-face keys (`type: local` only):
   reads `$face['display'] ?? $face['swap'] ?? 'swap'` — the documented `display:` key
   wins, the legacy `swap:` key is a fallback, and the default is `swap`. (Historically
   the accessor read only `swap`, so `display:` was silently ignored — fixed.)
-- **Don't name a `selector` the same as a role.** `onBuild` writes both
-  `fontFamily[selector]` and `fontFamily[role]` into the same map; a font whose selector
-  is e.g. `ui` collides with the `ui` role token. The shipped Google example
-  (`selector: ui`) does exactly this — the role write wins, which is usually fine, but
-  it's a footgun.
+- **A `selector` equal to a role name is reported.** `onBuild` writes both
+  `fontFamily[selector]` and `fontFamily[role]` into the same map, so a font whose
+  selector is e.g. `ui` writes the same key as the `ui` role and one of the two is
+  silently lost. `processDefinition()` logs a warning on the injected `neo_font` logger
+  channel naming the font, the selector and the role — right beside the id guard, which
+  still throws. It **reports rather than refuses on purpose**: the refusal lands in a
+  later release, so a site already carrying a colliding selector gets one version that
+  warns it before one that fails its cache rebuild. Only an explicitly declared
+  `selector:` can trip it — an undeclared selector takes the id, and an id equal to a
+  role name is refused outright. The message deliberately doesn't say which entry wins;
+  that is the role resolver's subject. No shipped example declares one.
 - **Fonts are a cache-backed YAML plugin.** Adding/removing a `*.neo.font.yml` entry or
   a font file needs `drush cr` before it's discovered. A bad local `src` throws during
   discovery and can wedge the cache rebuild until fixed.

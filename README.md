@@ -54,7 +54,8 @@ Every definition supports these top-level properties:
              as the fallback (e.g. 'sans'). For 'generic', the raw CSS fallback
              stack itself.
  * selector  The class suffix for the generated `.font-{selector}` utility.
-             Defaults to the machine id.
+             Defaults to the machine id. It must not be one of the five font
+             role names — see Font Roles.
  * faces     (required for 'local') The @font-face definitions (see below).
  * spec      (for 'google') The Google Fonts `css2` spec string.
 
@@ -119,13 +120,17 @@ stylesheet link added to the page head (with preconnect hints).
 Please see [Google Fonts Locally](#google-fonts-locally) for a better way.
 
 ```yml
-inter:
+inter-google:
   family: Inter
   type: google
   generic: sans
-  selector: ui
+  selector: inter-cdn
   spec: 'ital,opsz,wght@0,14..32,100..900;1,14..32,100..900'
 ```
+
+The 'selector' above is optional; it is set here so this CDN-served Inter gets
+its own `.font-inter-cdn` utility rather than colliding with the local Inter
+declared elsewhere.
 
 
 ## GOOGLE FONTS LOCALLY
@@ -150,6 +155,12 @@ permission "administer neo_font"). The mapping is stored in `neo_font.settings`.
 Roles let a theme reference an intent ("the heading font") rather than a
 specific font, so the underlying font can be swapped from the admin UI without
 touching templates or rebuilding assets.
+
+Role names and font selectors share one namespace, so a font declaring a
+'selector' equal to a role name writes the same key as that role and one of the
+two is silently lost. A selector matching a role name is reported as a warning
+in the log today and will be refused outright in a future release — rename the
+selector rather than relying on the current behaviour.
 
 
 ## USING FONTS

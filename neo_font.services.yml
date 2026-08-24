@@ -15,6 +15,12 @@ services:
     class: Drupal\neo_font\FontRoleResolver
     arguments: ['@plugin.manager.neo_font', '@neo_font.settings']
 
+  neo_font.neo_build_declaration_event_subscriber:
+    class: '\Drupal\neo_font\EventSubscriber\NeoBuildDeclarationEventSubscriber'
+    arguments: ['@plugin.manager.neo_font']
+    tags:
+      - { name: 'event_subscriber' }
+
   neo_font.neo_build_event_subscriber:
     class: '\Drupal\neo_font\EventSubscriber\NeoBuildEventSubscriber'
     arguments: ['@neo_font.role_resolver']

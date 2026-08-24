@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Drupal\neo_font;
 
+use Drupal\Component\Utility\NestedArray;
 use Drupal\Core\Cache\CacheBackendInterface;
 use Drupal\Core\Extension\ModuleHandlerInterface;
 use Drupal\Core\Extension\ThemeHandlerInterface;
@@ -235,6 +236,49 @@ final class FontPluginManager extends DefaultPluginManager implements FontPlugin
         $this->droppedDefinitions[(string) $plugin_id] = (string) $plugin_id;
       }
     }
+  }
+
+  /**
+   * {@inheritdoc}
+   *
+   * The font declaration check. It runs the same single pass definition
+   * processing runs, over the declaration files themselves, and hands back
+   * everything it found without logging any of it and without dropping
+   * anything: the caller decides what a problem costs, and prepare's caller
+   * fails the build over a refusal.
+   *
+   * Reading the files rather than the cached definition set is not an
+   * optimisation detail — it is the whole reason the check can answer at all. A
+   * refusal removes the definition from that set, so by the time anything has
+   * asked for a definition the evidence is gone, and a cache-served set would
+   * report a clean site while the author's font is missing from every page. The
+   * cost is one extra YAML pass and one `file_exists()` per declared face, on a
+   * step a human triggered that already resets extension information and
+   * rebuilds every library definition.
+   *
+   * Nothing here goes through `hook_neo_font_info`. The alter is part of what a
+   * consumer of the definition set is handed; a declaration file is what an
+   * extension actually wrote, and that is the thing an author is being asked to
+   * fix.
+   *
+   * @return list<\Drupal\neo_font\FontDeclarationProblem>
+   *   Every problem found across every declared font, in discovery order.
+   */
+  public function checkDeclarations(): array {
+    $problems = [];
+    foreach ($this->getDiscovery()->getDefinitions() as $plugin_id => $definition) {
+      if (!is_array($definition)) {
+        continue;
+      }
+      // The same merge core's definition processing performs before this
+      // module's own runs, because every check reads a key the defaults may be
+      // the only source of.
+      $definition = NestedArray::mergeDeep($this->defaults, $definition);
+      foreach ($this->findDeclarationProblems($definition, (string) $plugin_id) as $problem) {
+        $problems[] = $problem;
+      }
+    }
+    return $problems;
   }
 
   /**

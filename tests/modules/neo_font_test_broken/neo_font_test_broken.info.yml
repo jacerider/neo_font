@@ -1,0 +1,7 @@
+name: 'Neo Font broken declaration fixtures'
+type: module
+description: 'Font declarations that fail on purpose, one per font declaration refusal. Enabled only by tests.'
+package: Testing
+hidden: true
+dependencies:
+  - neo_font:neo_font

@@ -1,0 +1,98 @@
+# The broken-declaration fixture module.
+#
+# Every declaration in this file is wrong on purpose, and there is one per
+# **font declaration refusal** the module can find: no family, no type, an
+# unsupported type, an id equal to a font role name, an unresolvable provider,
+# a local font with no faces, a face with no source, and a source that is not
+# on disk. The **font declaration check** reads declaration files rather than
+# the cached definition set, so it is only reachable from a test once an
+# extension the test suite controls declares something it must refuse.
+#
+# It is deliberately a *second* fixture, kept apart from the clean
+# `neo_font_test`. Every test written before this plan assumes each font that
+# fixture declares survives processing, so the two must never be enabled
+# together in one of those. Here they are enabled together on purpose: that a
+# broken declaration no longer takes the rest of the discovery pass with it is
+# one of the things this fixture proves.
+#
+# Nothing here ships a font file. Every local declaration fails before the face
+# rewrite that would need one, which is the same reason none of them reaches
+# `base_path()`.
+
+# No family: there is no font stack to build.
+broken_no_family:
+  label: 'Broken No Family'
+  type: google
+
+# No type: there is no processing path to choose.
+broken_no_type:
+  label: 'Broken No Type'
+  family: 'Broken No Type'
+
+# A type outside the supported set. Reachable only with a type that was
+# declared, which is why it is a separate font from the one above.
+broken_unsupported_type:
+  label: 'Broken Unsupported Type'
+  family: 'Broken Unsupported Type'
+  type: bitmap
+
+# A key whose derived id is the name of a font role. The derived id swaps
+# underscores for hyphens, so the key has to be the role name itself.
+heading:
+  label: 'Broken Role Name'
+  family: 'Broken Role Name'
+  type: google
+
+# A provider that is neither an installed module nor an installed theme, so
+# there is no directory to resolve face sources against. Discovery takes the
+# provider from the file's own extension unless the declaration names one, so
+# an explicit `provider` is the only way an installed extension can declare a
+# font whose provider does not exist.
+broken_provider:
+  label: 'Broken Provider'
+  family: 'Broken Provider'
+  type: local
+  provider: neo_font_no_such_extension
+  faces:
+    -
+      style: normal
+      weight: 400
+      src: fonts/broken-provider.woff2
+      format: woff2
+
+# A local font declaring no faces: no font-face rule, nothing to load.
+broken_no_faces:
+  label: 'Broken No Faces'
+  family: 'Broken No Faces'
+  type: local
+
+# A face declaring no source: no file to build a font-face rule from.
+broken_face_without_source:
+  label: 'Broken Face Without Source'
+  family: 'Broken Face Without Source'
+  type: local
+  faces:
+    -
+      style: normal
+      weight: 400
+      format: woff2
+
+# Two faces whose sources are not on disk. Two rather than one on purpose: a
+# theme that got several face paths wrong should learn all of them from one
+# pass, so this is the declaration that makes "every problem, not only the
+# first" checkable within a single font as well as across the set.
+broken_missing_source:
+  label: 'Broken Missing Source'
+  family: 'Broken Missing Source'
+  type: local
+  faces:
+    -
+      style: normal
+      weight: 400
+      src: fonts/broken-missing-one.woff2
+      format: woff2
+    -
+      style: italic
+      weight: 400
+      src: fonts/broken-missing-two.woff2
+      format: woff2

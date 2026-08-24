@@ -99,9 +99,8 @@ Per-face keys (`type: local` only):
   cached set: a refusal removes the definition, so a cache-served set would report a
   clean site. `alterDefinitions()` is where a dropped font actually leaves the set —
   before `hook_neo_font_info`, so an alter never sees a font that doesn't exist.
-  The `$directory = 'public://neo-fonts'` property + its copy/delete code are currently
-  **commented out** — local fonts are served straight from the extension path via
-  `base_path()`, so that dir is vestigial; don't build on it.
+  Local fonts are served straight from the declaring extension's path via
+  `base_path()` — nothing is copied anywhere, so the manager owns no font directory.
 - `FontDefault.php` (`FontInterface`) — one font instance. `getPropertyValue()` (the
   `'Family', generic` CSS value), `getFontFaces()` (assembles `@font-face` descriptor
   arrays, merging same-key faces across formats), `preview()` (the weight-ramp render

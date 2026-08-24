@@ -4,30 +4,33 @@ declare(strict_types=1);
 
 namespace Drupal\Tests\neo_font\Kernel;
 
-use Drupal\Component\Plugin\Exception\PluginException;
 use Drupal\KernelTests\KernelTestBase;
 use Drupal\neo_font\FontPluginManager;
 use PHPUnit\Framework\Attributes\Group;
 
 /**
- * Tests the local branch of definition processing.
+ * Tests the successful half of the local branch of definition processing.
  *
- * Local-font processing resolves the extension a font was declared by, refuses
- * four shapes, and rewrites every font face's source into a path a browser can
- * fetch. It is a kernel test rather than a unit test for two reasons: the
- * rewrite calls `base_path()`, which is bootstrap global state, and provider
- * resolution asks the real module and theme handlers whether an extension
- * exists. Both are real here and would be stubs in a unit test — and a stubbed
- * `base_path()` would be testing the stub.
+ * Local-font processing resolves the extension a font was declared by and
+ * rewrites every font face's source into a path a browser can fetch. That
+ * rewrite is what this class covers, and it is a kernel test rather than a unit
+ * test for two reasons: it calls `base_path()`, which is bootstrap global
+ * state, and provider resolution asks the real module and theme handlers
+ * whether an extension exists. Both are real here and would be stubs in a unit
+ * test — and a stubbed `base_path()` would be testing the stub.
+ *
+ * The branch's four **font declaration refusals** — an unresolvable provider, a
+ * font declaring no faces, a face declaring no source, and a source that is not
+ * on disk — are *not* here. Every one of them ends before the rewrite, so none
+ * of them reaches `base_path()`, and a refusal is now a logged drop rather than
+ * a throw: it is observable on a mocked logger with no container at all.
+ *
+ * @see \Drupal\Tests\neo_font\Unit\FontDeclarationDropTest
  *
  * Definition processing is reached by calling it directly on the manager from
  * the container, with hand-built definitions whose provider names one of the
- * fixture extensions. That is deliberate rather than convenient. The refusals
- * cannot be declared in the fixtures, because a single bad declaration throws
- * out of the whole discovery pass and would take every other kernel test in
- * this module with it; and calling directly is the only way to reach the branch
- * where the provider is neither a module nor a theme, since a definition that
- * arrived through discovery always has a real one.
+ * fixture extensions. That is deliberate rather than convenient: it is the only
+ * way to hand the branch a declaration the fixtures do not carry.
  *
  * The module list matches @see \Drupal\Tests\neo_font\Kernel\FontDiscoveryTest
  * and is wider than `neo_font.info.yml`'s dependency line for the same reason:
@@ -138,119 +141,49 @@ final class LocalFontProcessingTest extends KernelTestBase {
   }
 
   /**
-   * Tests that it refuses a provider that is neither module nor theme.
+   * Tests that a sound local font is still resolved and rewritten.
    */
-  public function testRefusesProviderThatIsNeitherInstalledModuleNorInstalledTheme(): void {
-    // An extension name belonging to nothing at all.
-    $definition = self::localFont('neo_font_no_such_extension', [self::face(self::MODULE_FACE)]);
-    $this->assertRefuses(
-      $definition,
-      'could not determine provider location',
-      'A provider naming no extension at all is refused.'
-    );
+  public function testStillResolvesProviderAndRewritesSourceOfSoundLocalFont(): void {
+    $manager = $this->manager();
 
-    // And a provider that is on disk but not installed. The handlers the code
-    // asks answer for *installed* extensions, so the fixture theme is an
-    // unresolvable provider right up until it is installed — which is the same
-    // refusal, reached by the shape a site is far likelier to hit.
-    $uninstalled = self::localFont(self::FIXTURE_THEME, [self::face(self::THEME_FACE)]);
-    $this->assertRefuses(
-      $uninstalled,
-      'could not determine provider location',
-      'A provider that is present on disk but not installed is refused.'
-    );
+    // A declaration the local branch refuses, processed first on the same
+    // manager. It is here because of what it used to cost: the refusal threw,
+    // so nothing behind it in the pass was processed at all. Now it is logged
+    // and dropped, and the rest of this test is what the font behind it gets.
+    $refused = self::localFont('neo_font_no_such_extension', [self::face(self::MODULE_FACE)]);
+    $manager->processDefinition($refused, self::PLUGIN_ID);
 
-    // The same declaration resolves once the theme is installed, so the refusal
-    // above is about installation and not about the declaration.
-    $this->installFixtureTheme();
-    $installed = self::localFont(self::FIXTURE_THEME, [self::face(self::THEME_FACE)]);
-    $this->manager()->processDefinition($installed, self::PLUGIN_ID);
-    $this->assertStringStartsWith('/', $installed['faces'][0]['src']);
-  }
-
-  /**
-   * Tests that it refuses a local font that declares no faces.
-   */
-  public function testRefusesLocalFontThatDeclaresNoFaces(): void {
-    // A local font is nothing but its faces — there is no source to rewrite and
-    // no `@font-face` rule to emit — so declaring none is refused rather than
-    // quietly producing a font that can never load.
-    $this->assertRefuses(
-      self::localFont(self::FIXTURE_MODULE, NULL),
-      'definition "local.faces" is required',
-      'A local font declaring no faces key at all is refused.'
-    );
-
-    $this->assertRefuses(
-      self::localFont(self::FIXTURE_MODULE, []),
-      'definition "local.faces" is required',
-      'A local font declaring an empty faces list is refused.'
-    );
-  }
-
-  /**
-   * Tests that it refuses a face that declares no source.
-   */
-  public function testRefusesFaceThatDeclaresNoSource(): void {
-    $this->assertRefuses(
-      self::localFont(self::FIXTURE_MODULE, [self::face(NULL)]),
-      'definition "faces.*.src" is required',
-      'A face declaring no src key at all is refused.'
-    );
-
-    $this->assertRefuses(
-      self::localFont(self::FIXTURE_MODULE, [self::face('')]),
-      'definition "faces.*.src" is required',
-      'A face declaring an empty src is refused.'
-    );
-
-    // Every face is checked, not just the first: a font whose second face lost
-    // its source is refused as surely as one whose only face did.
-    $this->assertRefuses(
-      self::localFont(self::FIXTURE_MODULE, [self::face(self::MODULE_FACE), self::face(NULL)]),
-      'definition "faces.*.src" is required',
-      'A later face declaring no src is refused, not skipped.'
-    );
-  }
-
-  /**
-   * Tests that it refuses a missing source, naming the path it looked for.
-   */
-  public function testRefusesFaceWhoseSourceDoesNotExistOnDiskNamingThePath(): void {
-    $missing = 'fonts/fixture-missing.woff2';
+    // Provider resolution: a module provider, resolved through the module
+    // handler, with every face rewritten and not merely the first.
     $path = $this->modulePath(self::FIXTURE_MODULE);
-    $this->assertFileDoesNotExist(
-      $this->root . '/' . $path . '/' . $missing,
-      'The face this test declares points at nothing, which is the whole subject.'
-    );
+    $sound = self::localFont(self::FIXTURE_MODULE, [
+      self::face(self::MODULE_FACE),
+      self::face(self::MODULE_FACE),
+    ]);
+    $manager->processDefinition($sound, self::PLUGIN_ID);
 
-    $definition = self::localFont(self::FIXTURE_MODULE, [self::face($missing)]);
-
-    try {
-      $this->manager()->processDefinition($definition, self::PLUGIN_ID);
-      $this->fail('A face whose source is not on disk is refused.');
-    }
-    catch (PluginException $e) {
-      $message = $e->getMessage();
-      $this->assertStringContainsString('references a font file that does not exist', $message);
-      $this->assertStringContainsString(self::PLUGIN_ID, $message, 'The refusal names the font it refused.');
-
-      // This is the one a theme author actually trips, so the message has to
-      // carry the resolved path rather than the fragment they wrote: the
-      // fragment is already in front of them, and the resolved path is what
-      // tells them which directory the module went looking in.
-      $this->assertStringContainsString($path . '/' . $missing, $message, 'The refusal names the resolved path it looked for.');
-
-      // And it names the path the check itself used, absolute against the app
-      // root, rather than a Drupal-root-relative rendering of it: a message
-      // naming a path other than the one tested sends the reader looking in
-      // the wrong directory.
-      $this->assertStringContainsString(
-        $this->root . '/' . $path . '/' . $missing,
-        $message,
-        'The refusal names the absolute path the existence check used.'
+    $this->assertCount(2, $sound['faces']);
+    foreach ($sound['faces'] as $delta => $face) {
+      $this->assertSame(
+        base_path() . $path . '/' . self::MODULE_FACE,
+        $face['src'],
+        sprintf('Face %d of a sound local font is rewritten against the declaring module\'s path.', $delta)
       );
     }
+
+    // And a theme provider, which arrives through the theme handler instead —
+    // a different branch of provider resolution, not the same branch with a
+    // different name.
+    $this->installFixtureTheme();
+    $theme_path = $this->themePath(self::FIXTURE_THEME);
+    $themed = self::localFont(self::FIXTURE_THEME, [self::face(self::THEME_FACE)]);
+    $this->manager()->processDefinition($themed, self::PLUGIN_ID);
+
+    $this->assertSame(
+      base_path() . $theme_path . '/' . self::THEME_FACE,
+      $themed['faces'][0]['src'],
+      'A sound theme-provided local font is resolved and rewritten too.'
+    );
   }
 
   /**
@@ -263,32 +196,6 @@ final class LocalFontProcessingTest extends KernelTestBase {
     $manager = $this->container->get('plugin.manager.neo_font');
     assert($manager instanceof FontPluginManager);
     return $manager;
-  }
-
-  /**
-   * Asserts that processing a definition is refused, and how.
-   *
-   * The refusals are `PluginException`s thrown out of discovery, so what a
-   * site sees is the message — asserting only the exception class would pass
-   * for whichever refusal happened to fire first.
-   *
-   * @param array<string, mixed> $definition
-   *   The definition to process. Passed by value: it is refused, so nothing
-   *   the call would have written to it is of interest.
-   * @param string $expected
-   *   A fragment the refusal's message must contain.
-   * @param string $message
-   *   The assertion message.
-   */
-  private function assertRefuses(array $definition, string $expected, string $message): void {
-    try {
-      $this->manager()->processDefinition($definition, self::PLUGIN_ID);
-      $this->fail($message);
-    }
-    catch (PluginException $e) {
-      $this->assertStringContainsString($expected, $e->getMessage(), $message);
-      $this->assertStringContainsString(self::PLUGIN_ID, $e->getMessage(), 'The refusal names the font it refused.');
-    }
   }
 
   /**

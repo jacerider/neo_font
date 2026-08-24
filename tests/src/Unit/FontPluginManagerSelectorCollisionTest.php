@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Drupal\Tests\neo_font\Unit;
 
-use Drupal\Component\Plugin\Exception\PluginException;
 use Drupal\Core\Cache\CacheBackendInterface;
 use Drupal\Core\Extension\ModuleHandlerInterface;
 use Drupal\Core\Extension\ThemeHandlerInterface;
@@ -59,8 +58,10 @@ use Psr\Log\LogLevel;
  *
  * @see \Drupal\Tests\neo_font\Unit\FontDeclarationDropTest
  *
- * Local-font processing itself is a kernel test — it calls `base_path()` and
- * asks the real extension handlers whether a provider exists.
+ * The local branch this class stops short of is covered in that same class,
+ * because its four refusals all end before the rewrite and need no container
+ * either. Only the successful rewrite is a kernel test — it calls
+ * `base_path()` and asks the real extension handlers for a provider's path.
  *
  * @see \Drupal\Tests\neo_font\Kernel\LocalFontProcessingTest
  *
@@ -219,39 +220,6 @@ final class FontPluginManagerSelectorCollisionTest extends UnitTestCase {
     $this->assertStringContainsString($expected, $refusals[0], $message);
     $this->assertStringContainsString($plugin_id, $refusals[0], 'The refusal names the font it refused.');
     return $refusals[0];
-  }
-
-  /**
-   * Asserts that processing a definition throws, and how.
-   *
-   * The local branch still refuses by throwing a `PluginException`; its four
-   * checks are converted through the same pass in the next ticket. Until then
-   * this is what a local refusal looks like, and it is reached from here only
-   * by the control in the generic-branch test.
-   *
-   * @param array<string, mixed> $definition
-   *   The definition to process. Passed by value: it is refused, so nothing
-   *   the call would have written to it is of interest.
-   * @param string $plugin_id
-   *   The plugin id to process the definition under.
-   * @param string $expected
-   *   A fragment the refusal's message must contain.
-   * @param string $message
-   *   The assertion message.
-   *
-   * @return string
-   *   The refusal's message, for any further assertion the caller makes.
-   */
-  private function assertRefuses(array $definition, string $plugin_id, string $expected, string $message): string {
-    try {
-      $this->manager()->processDefinition($definition, $plugin_id);
-    }
-    catch (PluginException $e) {
-      $this->assertStringContainsString($expected, $e->getMessage(), $message);
-      $this->assertStringContainsString($plugin_id, $e->getMessage(), 'The refusal names the font it refused.');
-      return $e->getMessage();
-    }
-    $this->fail($message);
   }
 
   /**
@@ -672,8 +640,9 @@ final class FontPluginManagerSelectorCollisionTest extends UnitTestCase {
     // inside hook_page_attachments, so a throw here is a stack trace on every
     // page render.
     //
-    // The local branch's four checks still throw; they are converted through
-    // this same pass in the next ticket, and are covered where they live.
+    // The local branch's four checks are refused through the same pass and are
+    // covered where they live, over a manager whose extension handlers answer
+    // for a directory the test wrote.
     $malformed = [
       'no family' => ['brand_sans', self::declaredFont(['family' => NULL])],
       'an empty family' => ['brand_sans', self::declaredFont(['family' => ''])],
@@ -737,10 +706,10 @@ final class FontPluginManagerSelectorCollisionTest extends UnitTestCase {
     // provider it names. That refusal is what the generic branch spared it, and
     // without it this test would pass on a definition local processing simply
     // had nothing to say about.
-    $this->assertRefuses(
+    $this->assertRefused(
       self::declaredFont(['type' => 'local'] + $declared),
       'system_sans',
-      'could not determine provider location',
+      'neither an installed module nor an installed theme',
       'The same declaration typed local is refused, so the generic branch is what returned early.'
     );
   }

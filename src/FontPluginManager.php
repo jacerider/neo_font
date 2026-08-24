@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Drupal\neo_font;
 
-use Drupal\Component\Plugin\Exception\PluginException;
 use Drupal\Core\Cache\CacheBackendInterface;
 use Drupal\Core\Extension\ModuleHandlerInterface;
 use Drupal\Core\Extension\ThemeHandlerInterface;
@@ -317,10 +316,13 @@ final class FontPluginManager extends DefaultPluginManager implements FontPlugin
     }
 
     // Only the types with a case here are processed further; a generic font
-    // is terminal and falls straight through.
+    // is terminal and falls straight through. The local branch is the other
+    // half of this pass rather than a step after it — it returns problems the
+    // same way, so a local font's four checks reach both callers through the
+    // same list as the four above.
     switch ($definition['type']) {
       case 'local':
-        $this->processDefinitionLocal($definition, $plugin_id);
+        $problems = array_merge($problems, $this->processDefinitionLocal($definition, $plugin_id));
         break;
     }
 
@@ -328,42 +330,91 @@ final class FontPluginManager extends DefaultPluginManager implements FontPlugin
   }
 
   /**
-   * Process a local font definition.
+   * Finds everything wrong with a local font, and rewrites it when nothing is.
+   *
+   * The other half of the pass above, in the same shape: it returns what it
+   * found rather than throwing, so an unresolvable provider, a font with no
+   * faces, a face with no source and a source that is not on disk all reach
+   * definition processing and the prepare-time font declaration check through
+   * one list. The last of those is the one a theme author actually trips, and
+   * its message names the path the check looked at rather than the fragment
+   * they wrote — the fragment is already in front of them, and the directory it
+   * resolved against is the whole reason the file was not found.
+   *
+   * Every face is checked before any face is rewritten, which is deliberate on
+   * two counts. A theme that got three sources wrong learns all three from one
+   * pass rather than one per build; and a refused declaration never reaches the
+   * rewrite at all, so a font that is about to be dropped is never left with
+   * half its faces resolved — and `base_path()`, the one piece of bootstrap
+   * global state this class touches, is only ever called for a font that is
+   * actually being built.
    *
    * @param array<string, mixed> $definition
-   *   The font definition to process, by reference.
+   *   The font definition to process, by reference. Face sources are rewritten
+   *   in place, and only when nothing is wrong with the declaration.
    * @param string $plugin_id
-   *   The definition's plugin id.
+   *   The definition's plugin id, which is the font key as the YAML spells it.
+   *
+   * @return list<\Drupal\neo_font\FontDeclarationProblem>
+   *   Every problem found with the local half of the declaration.
    */
-  protected function processDefinitionLocal(array &$definition, string $plugin_id): void {
-    $provider = $definition['provider'];
-    if ($this->moduleHandler->moduleExists($provider)) {
-      $base_path = $this->moduleHandler->getModule($provider)->getPath();
+  protected function processDefinitionLocal(array &$definition, string $plugin_id): array {
+    $extension = isset($definition['provider']) && is_string($definition['provider']) ? $definition['provider'] : '';
+    if ($extension !== '' && $this->moduleHandler->moduleExists($extension)) {
+      $base_path = $this->moduleHandler->getModule($extension)->getPath();
     }
-    elseif ($this->themeHandler->themeExists($provider)) {
-      $base_path = $this->themeHandler->getTheme($provider)->getPath();
+    elseif ($extension !== '' && $this->themeHandler->themeExists($extension)) {
+      $base_path = $this->themeHandler->getTheme($extension)->getPath();
     }
     else {
-      throw new PluginException(sprintf('Style font plugin property (%s) could not determine provider location.', $plugin_id));
+      return [
+        FontDeclarationProblem::refusal($extension, $plugin_id, 'names a provider that is neither an installed module nor an installed theme, so there is no directory to resolve its font files against.'),
+      ];
     }
-    if (empty($definition['faces'])) {
-      throw new PluginException(sprintf('Style font plugin property (%s) definition "local.faces" is required.', $plugin_id));
+
+    $faces = $definition['faces'] ?? NULL;
+    if (empty($faces) || !is_array($faces)) {
+      return [
+        FontDeclarationProblem::refusal($extension, $plugin_id, 'declares no font faces, so there is no font-face rule to emit and nothing for a browser to load.'),
+      ];
     }
-    foreach ($definition['faces'] as &$face) {
-      if (empty($face['src'])) {
-        throw new PluginException(sprintf('Style font plugin property (%s) definition "faces.*.src" is required.', $plugin_id));
+
+    $problems = [];
+    $resolved = [];
+    foreach ($faces as $delta => $face) {
+      $position = (string) $delta;
+      if (!is_array($face) || empty($face['src']) || !is_scalar($face['src'])) {
+        $problems[] = FontDeclarationProblem::refusal($extension, $plugin_id, 'has a font face at position %face with no source, so there is no file to build a font-face rule from. Every face needs a src.', [
+          '%face' => $position,
+        ]);
+        continue;
       }
-      $src = $base_path . '/' . $face['src'];
-      // Name the path the check actually used. The declared fragment is
-      // already in front of whoever wrote it; what they cannot see is which
-      // directory it resolved against, which is the whole reason the file was
-      // not found.
+      $src = $base_path . '/' . (string) $face['src'];
       $absolute = $this->appRoot . '/' . $src;
       if (!file_exists($absolute)) {
-        throw new PluginException(sprintf('Style font plugin property (%s) references a font file that does not exist. (%s)', $plugin_id, $absolute));
+        $problems[] = FontDeclarationProblem::refusal($extension, $plugin_id, 'has a font face at position %face whose source %src is not on disk: nothing exists at %path.', [
+          '%face' => $position,
+          '%src' => (string) $face['src'],
+          '%path' => $absolute,
+        ]);
+        continue;
       }
-      $face['src'] = base_path() . $src;
+      $resolved[$delta] = $src;
     }
+
+    if ($problems) {
+      return $problems;
+    }
+
+    foreach ($faces as $delta => $face) {
+      if (isset($resolved[$delta]) && is_array($face)) {
+        $face['src'] = base_path() . $resolved[$delta];
+        $faces[$delta] = $face;
+      }
+    }
+    $definition['faces'] = $faces;
+
+    return [];
   }
 
   /**

@@ -71,6 +71,19 @@ final class FontPluginManager extends DefaultPluginManager implements FontPlugin
   protected $directory = 'public://neo-fonts';
 
   /**
+   * The plugin ids definition processing refused during the current pass.
+   *
+   * Definition processing is handed one definition by reference and cannot
+   * remove it from a set it never sees, so the refusals it finds are recorded
+   * here and acted on by the pass that does own the set.
+   *
+   * @var array<string, string>
+   *
+   * @see \Drupal\neo_font\FontPluginManager::alterDefinitions()
+   */
+  protected array $droppedDefinitions = [];
+
+  /**
    * {@inheritdoc}
    *
    * @var array<string, mixed>
@@ -154,6 +167,7 @@ final class FontPluginManager extends DefaultPluginManager implements FontPlugin
   protected function findDefinitions(): array {
     // $file_system = \Drupal::service('file_system');
     // $file_system->deleteRecursive($this->directory);
+    $this->droppedDefinitions = [];
     $definitions = parent::findDefinitions();
     foreach ($definitions as &$definition) {
       if ($definition['type'] !== 'generic' && !empty($definition['generic']) && isset($definitions[$definition['generic']])) {
@@ -169,6 +183,40 @@ final class FontPluginManager extends DefaultPluginManager implements FontPlugin
   /**
    * {@inheritdoc}
    *
+   * Where a dropped font definition actually leaves the set, and the one place
+   * in the pass where that choice is available to make.
+   *
+   * Definition processing collects a refusal per definition but cannot remove
+   * one — it is handed a single definition by reference — so the removal has to
+   * happen in the pass that owns the whole set. Core's definition finding runs
+   * the processing loop, then this alter, then its own provider filter, and
+   * this module's generic resolution and label sort come after all three. Every
+   * one of those is downstream of here, which is what makes this the earliest
+   * point the drop can happen.
+   *
+   * It is deliberately *before* `hook_neo_font_info`. Core runs that alter from
+   * inside its definition finding, so an implementation would otherwise be
+   * handed the slot of a font that does not exist, and would have to know which
+   * entries the pass was about to throw away in order to read the set right.
+   * A dropped font does not exist for the rest of the request, and that has to
+   * be true of the alter hook too. No implementation exists on this site or in
+   * any `jacerider/*` package, which is exactly why the choice is made on
+   * purpose here rather than discovered by whoever writes the first one.
+   *
+   * @param array<mixed> $definitions
+   *   The discovered definitions, keyed by plugin id, by reference.
+   */
+  protected function alterDefinitions(&$definitions): void {
+    foreach ($this->droppedDefinitions as $plugin_id) {
+      unset($definitions[$plugin_id]);
+    }
+    $this->droppedDefinitions = [];
+    parent::alterDefinitions($definitions);
+  }
+
+  /**
+   * {@inheritdoc}
+   *
    * @param array<string, mixed> $definition
    *   The font definition to process, by reference.
    * @param string $plugin_id
@@ -177,42 +225,92 @@ final class FontPluginManager extends DefaultPluginManager implements FontPlugin
   public function processDefinition(&$definition, $plugin_id): void {
     parent::processDefinition($definition, $plugin_id);
 
+    // Definition processing throws nothing. It runs the checks, logs what they
+    // found, and records a refusal for the drop — see ADR 0004 for why, and for
+    // why that reads as swallowing errors until you know that the Google font
+    // link resolves the whole definition set inside hook_page_attachments, so
+    // a throw here is a stack trace on every page render of every site.
+    foreach ($this->findDeclarationProblems($definition, (string) $plugin_id) as $problem) {
+      $this->logger->log($problem->severity->logLevel(), $problem->message, $problem->context);
+      if ($problem->isRefusal()) {
+        $this->droppedDefinitions[(string) $plugin_id] = (string) $plugin_id;
+      }
+    }
+  }
+
+  /**
+   * Finds everything wrong with one font declaration.
+   *
+   * The single pass every check lives in. It returns what it found rather than
+   * acting on it, because it has two callers that act differently: definition
+   * processing logs each problem and drops the definition, and the prepare-time
+   * font declaration check collects them and fails the build. Neither owns the
+   * rule — this method does — so the two can never disagree about what is wrong
+   * with a file.
+   *
+   * It derives as much as it checks, and the order of the two is load-bearing:
+   * the id, the label and the font selector are derived between the checks
+   * because the checks after them read what they derived.
+   *
+   * @param array<string, mixed> $definition
+   *   The font definition to check, by reference. The derivations are written
+   *   back to it.
+   * @param string $plugin_id
+   *   The definition's plugin id, which is the font key as the YAML spells it.
+   *
+   * @return list<\Drupal\neo_font\FontDeclarationProblem>
+   *   Every problem found with the declaration, in the order they were found.
+   */
+  protected function findDeclarationProblems(array &$definition, string $plugin_id): array {
+    $problems = [];
+    $extension = isset($definition['provider']) && is_string($definition['provider']) ? $definition['provider'] : '';
+
     if (empty($definition['family'])) {
-      throw new PluginException(sprintf('Style font plugin property (%s) definition "family" is required.', $plugin_id));
+      $problems[] = FontDeclarationProblem::refusal($extension, $plugin_id, 'declares no font family, so there is no font stack to build from it.');
     }
 
+    $types = array_keys($this->getSupportedTypes());
     if (empty($definition['type'])) {
-      throw new PluginException(sprintf('Style font plugin property (%s) definition "type" is required.', $plugin_id));
+      $problems[] = FontDeclarationProblem::refusal($extension, $plugin_id, 'declares no font type, so there is no way to process it. Declare one of: @types.', [
+        '@types' => implode(', ', $types),
+      ]);
     }
-
-    if (!in_array($definition['type'], array_keys($this->getSupportedTypes()))) {
-      throw new PluginException(sprintf('Style font plugin property (%s) definition "type" is not supported.', $plugin_id));
+    elseif (!in_array($definition['type'], $types)) {
+      // Only reachable with a type that was declared, so the two type checks
+      // never both fire: an undeclared type is empty rather than absent, and
+      // would satisfy this one just as well.
+      $problems[] = FontDeclarationProblem::refusal($extension, $plugin_id, 'declares the font type %type, which is not supported. Declare one of: @types.', [
+        '%type' => is_scalar($definition['type']) ? (string) $definition['type'] : gettype($definition['type']),
+        '@types' => implode(', ', $types),
+      ]);
     }
 
     $definition['id'] = str_replace('_', '-', $plugin_id);
-    $definition['label'] = $definition['label'] ?: (string) $definition['family'];
-    $definition['selector'] = $definition['selector'] ?: $definition['id'];
+    $definition['label'] = ($definition['label'] ?? '') ?: (string) ($definition['family'] ?? '');
+    $definition['selector'] = ($definition['selector'] ?? '') ?: $definition['id'];
 
-    if (isset($this->getSettingTypes()[$definition['id']])) {
-      throw new PluginException(sprintf('Style font plugin property (%s) definition "id" conflicts with a setting type.', $plugin_id));
+    $roles = $this->getSettingTypes();
+    if (isset($roles[$definition['id']])) {
+      $problems[] = FontDeclarationProblem::refusal($extension, $plugin_id, 'derives the id %id, which is the name of a font role. Rename the font key: a definition id claiming a role name destroys that role\'s token.', [
+        '%id' => $definition['id'],
+      ]);
     }
-
     // The selector is the half of a definition that reaches CSS, and it shares
     // its keyspace with the font roles: a font selecting on a role's name and
     // that role write the same key, and one of the two is silently lost. Only
     // an explicitly declared selector can get here — a selector left undeclared
-    // takes the definition's id, and an id equal to a role name was refused
-    // immediately above.
+    // takes the definition's id, and an id equal to a role name is refused by
+    // the branch above. That guarantee is why this is an elseif and not a
+    // second if: a definition already refused for its id would otherwise be
+    // reported for the selector it derived from that same id.
     //
     // This reports rather than refuses on purpose. The refusal belongs to a
     // later release, so that a site already carrying a colliding declaration
-    // gets one released version that warns it before one that fails its cache
-    // rebuild. Nothing here says which of the two entries wins: that is the
-    // role resolver's subject, and this message has to stay true either side
-    // of it.
-    if (isset($this->getSettingTypes()[(string) $definition['selector']])) {
-      $this->logger->warning('The font %font declares the selector %selector, which is also the name of the %role font role. Rename the selector: a font selector matching a font role name is reported now and will be refused in a future release.', [
-        '%font' => $plugin_id,
+    // gets one released version that warns it before one that drops the font.
+    // Nothing here says which of the two entries wins: that is the role
+    // resolver's subject, and this message has to stay true either side of it.
+    elseif (isset($roles[(string) $definition['selector']])) {
+      $problems[] = FontDeclarationProblem::report($extension, $plugin_id, 'declares the selector %selector, which is also the name of the %role font role. Rename the selector: a font selector matching a font role name is reported now and will be refused in a future release.', [
         '%selector' => $definition['selector'],
         '%role' => $definition['selector'],
       ]);
@@ -222,9 +320,11 @@ final class FontPluginManager extends DefaultPluginManager implements FontPlugin
     // is terminal and falls straight through.
     switch ($definition['type']) {
       case 'local':
-        $this->processDefinitionLocal($definition, (string) $plugin_id);
+        $this->processDefinitionLocal($definition, $plugin_id);
         break;
     }
+
+    return $problems;
   }
 
   /**

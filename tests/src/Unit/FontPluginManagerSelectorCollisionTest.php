@@ -27,7 +27,7 @@ use Psr\Log\LogLevel;
  * **The collision report.** A font's selector and the five font roles share one
  * keyspace in the emitted Tailwind theme, so a font declaring the selector `ui`
  * writes the same key as the `ui` role and one of the two is silently lost.
- * Discovery already refuses a definition whose derived id is a role name; the
+ * Discovery already drops a definition whose derived id is a role name; the
  * collision tests pin the matching report for the selector, which is the half
  * that actually reaches CSS.
  *
@@ -37,19 +37,27 @@ use Psr\Log\LogLevel;
  * nothing about which of the two entries wins — that is the role resolver's
  * subject, and this wording has to stay true either side of it.
  *
- * **The refusals and the derivations.** Three refusals run before the id guard
- * — no family, no font type, a font type outside the supported list — and three
- * derivations run after it: the definition id is the plugin id with underscores
- * replaced by hyphens, the label falls back to the family, and the selector
- * falls back to the definition id. The derivations are where this module's
+ * **The refusals and the derivations.** Definition processing throws nothing:
+ * every check yields a **font declaration problem**, the pass logs it — a
+ * **font declaration refusal** at error, a **font declaration report** at
+ * warning — and a refusal drops the definition from the set discovery returns.
+ * Three refusals run before the id guard — no family, no font type, a font type
+ * outside the supported list — and three derivations run after it: the
+ * definition id is the plugin id with underscores replaced by hyphens, the
+ * label falls back to the family, and the selector falls back to the definition
+ * id. The derivations are where this module's
  * history has already cost something: the id/plugin-id split needed a bug fix,
  * and the selector fallback is what makes a selector–role collision reachable
  * only from an explicitly written selector. Last comes the branch that returns
  * a generic font before any local processing happens.
  *
- * These characterise what the module does today and change no production code,
- * so a behaviour that turns out to be wrong is recorded rather than repaired
- * here.
+ * The drop itself is not visible from here. Definition processing is handed one
+ * definition by reference and cannot remove it from a set it never sees, so
+ * what a refusal looks like at this seam is a log line and a call that
+ * returned; that the definition is gone from the discovered set is asserted
+ * over the set, in its own class.
+ *
+ * @see \Drupal\Tests\neo_font\Unit\FontDeclarationDropTest
  *
  * Local-font processing itself is a kernel test — it calls `base_path()` and
  * asks the real extension handlers whether a provider exists.
@@ -176,13 +184,50 @@ final class FontPluginManagerSelectorCollisionTest extends UnitTestCase {
   }
 
   /**
-   * Asserts that processing a definition is refused, and how.
+   * Asserts that a definition is refused, and how.
    *
-   * The refusals are `PluginException`s thrown out of discovery, so what a site
-   * sees is the message. Asserting only the exception class would let a test
+   * A refusal is not a throw: definition processing logs it at error and the
+   * definition is dropped, so what a site sees is the log line and that is what
+   * is asserted. Asserting only that *something* was logged would let a test
    * pass for whichever refusal happened to fire first, which matters here: the
-   * three refusals run in sequence over the same definition, and switching one
-   * off drops the definition into the next one rather than through all of them.
+   * checks run in sequence over the same definition, and switching one off
+   * drops the definition into the next one rather than through all of them.
+   *
+   * The record is reset per call, so a test may refuse several declarations in
+   * a row and each assertion sees only its own.
+   *
+   * @param array<string, mixed> $definition
+   *   The definition to process. Passed by value: it is refused, so nothing
+   *   the call would have written to it is of interest.
+   * @param string $plugin_id
+   *   The plugin id to process the definition under.
+   * @param string $expected
+   *   A fragment the refusal's message must contain.
+   * @param string $message
+   *   The assertion message.
+   *
+   * @return string
+   *   The refusal's rendered message, for any further assertion the caller
+   *   makes.
+   */
+  private function assertRefused(array $definition, string $plugin_id, string $expected, string $message): string {
+    $this->records = new \ArrayObject();
+    $this->manager()->processDefinition($definition, $plugin_id);
+
+    $refusals = $this->renderedAtLevel(LogLevel::ERROR);
+    $this->assertCount(1, $refusals, $message);
+    $this->assertStringContainsString($expected, $refusals[0], $message);
+    $this->assertStringContainsString($plugin_id, $refusals[0], 'The refusal names the font it refused.');
+    return $refusals[0];
+  }
+
+  /**
+   * Asserts that processing a definition throws, and how.
+   *
+   * The local branch still refuses by throwing a `PluginException`; its four
+   * checks are converted through the same pass in the next ticket. Until then
+   * this is what a local refusal looks like, and it is reached from here only
+   * by the control in the generic-branch test.
    *
    * @param array<string, mixed> $definition
    *   The definition to process. Passed by value: it is refused, so nothing
@@ -216,9 +261,26 @@ final class FontPluginManagerSelectorCollisionTest extends UnitTestCase {
    *   The rendered warning messages, in the order they were logged.
    */
   private function renderedWarnings(): array {
+    return $this->renderedAtLevel(LogLevel::WARNING);
+  }
+
+  /**
+   * Returns every message logged at one level, with its context substituted in.
+   *
+   * The severity split is the whole point of the mechanism — refusals at error,
+   * reports at warning — so the level is what these tests filter on rather than
+   * the wording.
+   *
+   * @param string $level
+   *   The PSR-3 log level to filter on.
+   *
+   * @return list<string>
+   *   The rendered messages, in the order they were logged.
+   */
+  private function renderedAtLevel(string $level): array {
     $rendered = [];
     foreach ($this->records as $record) {
-      if ($record['level'] !== LogLevel::WARNING) {
+      if ($record['level'] !== $level) {
         continue;
       }
       $replacements = [];
@@ -235,20 +297,20 @@ final class FontPluginManagerSelectorCollisionTest extends UnitTestCase {
   /**
    * Tests that it refuses a definition that declares no family.
    */
-  public function testRefusesDefinitionThatDeclaresNoFamily(): void {
-    $this->assertRefuses(
+  public function testDropsDefinitionThatDeclaresNoFamily(): void {
+    $this->assertRefused(
       self::declaredFont(['family' => NULL]),
       'brand_sans',
-      'definition "family" is required',
-      'A font declaring no family is refused.'
+      'declares no font family',
+      'A font declaring no family is refused: with no family it has no font stack.'
     );
 
     // The guard is an emptiness check, not an isset(), so a family declared as
     // an empty string is the same refusal and not an accepted declaration.
-    $this->assertRefuses(
+    $this->assertRefused(
       self::declaredFont(['family' => '']),
       'brand_sans',
-      'definition "family" is required',
+      'declares no font family',
       'A font declaring an empty family is refused.'
     );
   }
@@ -256,28 +318,29 @@ final class FontPluginManagerSelectorCollisionTest extends UnitTestCase {
   /**
    * Tests that it refuses a definition that declares no font type.
    */
-  public function testRefusesDefinitionThatDeclaresNoFontType(): void {
-    $undeclared = $this->assertRefuses(
+  public function testDropsDefinitionThatDeclaresNoFontType(): void {
+    $undeclared = $this->assertRefused(
       self::declaredFont(['type' => NULL]),
       'brand_sans',
-      'definition "type" is required',
+      'declares no font type',
       'A font declaring no font type is refused.'
     );
 
     // Two refusals read the font type, one after the other, and an undeclared
     // type is empty rather than absent — so it would satisfy the unsupported
     // guard just as well. Naming the message is what keeps this criterion from
-    // passing on the wrong refusal.
+    // passing on the wrong refusal, and it is also why the pass produces one
+    // problem here rather than two.
     $this->assertStringNotContainsString(
       'is not supported',
       $undeclared,
       'A missing font type is refused for being missing, not for being unsupported.'
     );
 
-    $this->assertRefuses(
+    $this->assertRefused(
       self::declaredFont(['type' => '']),
       'brand_sans',
-      'definition "type" is required',
+      'declares no font type',
       'A font declaring an empty font type is refused.'
     );
   }
@@ -285,18 +348,24 @@ final class FontPluginManagerSelectorCollisionTest extends UnitTestCase {
   /**
    * Tests that it refuses a font type outside the supported types.
    */
-  public function testRefusesFontTypeThatIsNotOneOfTheSupportedTypes(): void {
-    $this->assertRefuses(
+  public function testDropsFontTypeThatIsNotOneOfTheSupportedTypes(): void {
+    $refusal = $this->assertRefused(
       self::declaredFont(['type' => 'svg']),
       'brand_sans',
-      'definition "type" is not supported',
+      'is not supported',
       'A font declaring a type outside the supported list is refused.'
     );
+
+    // The refusal names the type it read and the ones it would have accepted,
+    // because the author's next move is to write one of them.
+    $this->assertStringContainsString('svg', $refusal);
+    $this->assertStringContainsString('local, google, generic', $refusal);
 
     // The guard reads the supported types rather than a literal, so a type the
     // list carries has to get through it. `local` is left out: it is supported
     // and would be refused a step later, by local processing, for a provider
     // that no extension answers to.
+    $this->records = new \ArrayObject();
     $manager = $this->manager();
     foreach (['google', 'generic'] as $type) {
       $supported = self::declaredFont(['type' => $type]);
@@ -307,6 +376,17 @@ final class FontPluginManagerSelectorCollisionTest extends UnitTestCase {
         sprintf('A font declaring the supported type "%s" is processed, not refused.', $type)
       );
     }
+
+    $this->assertSame(
+      [],
+      $this->renderedAtLevel(LogLevel::ERROR),
+      'A supported type is not refused.'
+    );
+    $this->assertSame(
+      [],
+      $this->renderedWarnings(),
+      'A supported type is not reported either: it is processed silently.'
+    );
 
     $this->assertArrayHasKey(
       'local',
@@ -515,22 +595,105 @@ final class FontPluginManagerSelectorCollisionTest extends UnitTestCase {
   /**
    * A definition whose derived id is a role name is still refused.
    */
-  public function testDefinitionWhoseIdIsRoleNameIsStillRefused(): void {
-    $definition = self::googleFont();
-
-    try {
-      $this->manager()->processDefinition($definition, 'ui');
-      $this->fail('A font whose derived id is a role name is refused.');
-    }
-    catch (PluginException $e) {
-      $this->assertStringContainsString('conflicts with a setting type', $e->getMessage());
-    }
+  public function testDefinitionWhoseIdIsRoleNameIsStillDropped(): void {
+    $refusal = $this->assertRefused(
+      self::googleFont(),
+      'ui',
+      'is the name of a font role',
+      'A font whose derived id is a font role name is refused.'
+    );
+    $this->assertStringContainsString(
+      'ui',
+      $refusal,
+      'The refusal names the id that claimed the role.'
+    );
 
     $this->assertSame(
       [],
-      $this->records->getArrayCopy(),
-      'The id guard refuses first, so a defaulted selector never reaches the collision report.'
+      $this->renderedWarnings(),
+      'The id refusal takes the branch, so a defaulted selector never reaches the collision report.'
     );
+  }
+
+  /**
+   * Every dropped definition is logged at error, with enough to find it by.
+   */
+  public function testLogsEveryDroppedDefinitionAtErrorNamingWhoseAndWhy(): void {
+    $manager = $this->manager();
+
+    $missing_family = self::declaredFont(['family' => NULL, 'provider' => 'brand_theme']);
+    $manager->processDefinition($missing_family, 'brand_sans');
+
+    $this->assertCount(1, $this->records, 'The refusal is logged once.');
+    $this->assertSame(
+      LogLevel::ERROR,
+      $this->records[0]['level'],
+      'A refusal is logged at error. The severity split is only worth having if an operator can filter on it.'
+    );
+
+    $message = $this->renderedAtLevel(LogLevel::ERROR)[0];
+    $this->assertStringContainsString('brand_theme', $message, 'The log names the extension that declared the font.');
+    $this->assertStringContainsString('brand_sans', $message, 'The log names the font key.');
+    $this->assertStringContainsString('family', $message, 'The log says what is wrong with it.');
+
+    // The font key as the YAML spells it, not the id derived from it: the
+    // author is looking for an entry in their own file, and the hyphenated
+    // form appears nowhere in it.
+    $this->assertStringNotContainsString(
+      'brand-sans',
+      $message,
+      'The log names the font key, not the derived id.'
+    );
+
+    $context = $this->records[0]['context'];
+    $this->assertSame('brand_theme', (string) $context['%extension']);
+    $this->assertSame('brand_sans', (string) $context['%font']);
+
+    // Every dropped definition, not the first one the pass met — a discovery
+    // pass covers every extension, and one broken declaration no longer ends
+    // the pass for the ones behind it.
+    $second = self::declaredFont(['type' => 'svg', 'provider' => 'other_theme']);
+    $manager->processDefinition($second, 'other_sans');
+
+    $refusals = $this->renderedAtLevel(LogLevel::ERROR);
+    $this->assertCount(2, $refusals, 'Both dropped definitions are logged.');
+    $this->assertStringContainsString('other_theme', $refusals[1]);
+    $this->assertStringContainsString('other_sans', $refusals[1]);
+  }
+
+  /**
+   * Nothing throws out of definition processing, however bad the declaration.
+   */
+  public function testThrowsNothingForDeclarationTheOuterChecksRefuse(): void {
+    // Every shape the outer checks refuse, including declarations wrong in more
+    // than one way at once, a type that is not even a string, and one that
+    // declares nothing at all. The whole point of the plan is that none of
+    // these can end a request: the Google font link resolves the definition set
+    // inside hook_page_attachments, so a throw here is a stack trace on every
+    // page render.
+    //
+    // The local branch's four checks still throw; they are converted through
+    // this same pass in the next ticket, and are covered where they live.
+    $malformed = [
+      'no family' => ['brand_sans', self::declaredFont(['family' => NULL])],
+      'an empty family' => ['brand_sans', self::declaredFont(['family' => ''])],
+      'no font type' => ['brand_sans', self::declaredFont(['type' => NULL])],
+      'an unsupported font type' => ['brand_sans', self::declaredFont(['type' => 'svg'])],
+      'a font type that is not a string' => ['brand_sans', self::declaredFont(['type' => ['google']])],
+      'an id claiming a font role' => ['ui', self::declaredFont()],
+      'every one of them at once' => ['heading', ['provider' => 'brand_theme', 'family' => '', 'type' => []]],
+      'nothing at all' => ['brand_sans', []],
+    ];
+
+    foreach ($malformed as $description => [$plugin_id, $definition]) {
+      $this->records = new \ArrayObject();
+      $this->manager()->processDefinition($definition, $plugin_id);
+
+      $this->assertNotEmpty(
+        $this->renderedAtLevel(LogLevel::ERROR),
+        sprintf('A declaration with %s is refused through the log rather than thrown out of the pass.', $description)
+      );
+    }
   }
 
   /**

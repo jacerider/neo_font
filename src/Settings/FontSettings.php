@@ -2,15 +2,18 @@
 
 namespace Drupal\neo_font\Settings;
 
-use Drupal\Core\Form\FormBuilderInterface;
 use Drupal\Core\Form\FormStateInterface;
-use Drupal\Core\Messenger\MessengerInterface;
 use Drupal\neo_font\FontPluginManagerInterface;
 use Drupal\neo_settings\Plugin\SettingsBase;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 
 /**
  * Module settings.
+ *
+ * Injects the font plugin manager and deliberately never the font role
+ * resolver: the settings repository builds this plugin in its own constructor
+ * and the resolver injects that repository, so consuming the resolver here
+ * would close a container cycle.
  *
  * @Settings(
  *   id = "neo_font",
@@ -26,37 +29,35 @@ class FontSettings extends SettingsBase {
   /**
    * The font plugin manager.
    *
+   * Protected rather than private: DependencySerializationTrait's __sleep() is
+   * compiled into SettingsBase, so it cannot see — and therefore cannot record
+   * or restore — a private property declared on this subclass.
+   *
    * @var \Drupal\neo_font\FontPluginManagerInterface
+   *
+   * @see https://www.drupal.org/node/3110266
    */
-  private FontPluginManagerInterface $fontManager;
+  protected FontPluginManagerInterface $fontManager;
 
   /**
    * {@inheritdoc}
-   */
-  public function __construct(
-    array $configuration,
-    $plugin_id,
-    $plugin_definition,
-    MessengerInterface $messenger,
-    FormBuilderInterface $form_builder,
-    FontPluginManagerInterface $font_plugin_manager,
-  ) {
-    parent::__construct($configuration, $plugin_id, $plugin_definition, $messenger, $form_builder);
-    $this->fontManager = $font_plugin_manager;
-  }
-
-  /**
-   * {@inheritdoc}
+   *
+   * @param \Symfony\Component\DependencyInjection\ContainerInterface $container
+   *   The service container.
+   * @param array<string, mixed> $configuration
+   *   A configuration array containing information about the plugin instance.
+   * @param string $plugin_id
+   *   The plugin_id for the plugin instance.
+   * @param mixed $plugin_definition
+   *   The plugin implementation definition.
+   *
+   * @return static
+   *   The settings plugin, carrying the font plugin manager.
    */
   public static function create(ContainerInterface $container, array $configuration, $plugin_id, $plugin_definition) {
-    return new static(
-      $configuration,
-      $plugin_id,
-      $plugin_definition,
-      $container->get('messenger'),
-      $container->get('form_builder'),
-      $container->get('plugin.manager.neo_font')
-    );
+    $instance = parent::create($container, $configuration, $plugin_id, $plugin_definition);
+    $instance->fontManager = $container->get('plugin.manager.neo_font');
+    return $instance;
   }
 
   /**
@@ -65,6 +66,14 @@ class FontSettings extends SettingsBase {
    * Instance settings are settings that are set both in the base form and the
    * variation form. They are editable in both forms and the values are merged
    * together.
+   *
+   * @param array<mixed> $form
+   *   A nested array of form elements comprising the form.
+   * @param \Drupal\Core\Form\FormStateInterface $form_state
+   *   The current state of the form.
+   *
+   * @return array<mixed>
+   *   The form elements for this settings plugin.
    */
   protected function buildForm(array $form, FormStateInterface $form_state) {
     $form = parent::buildForm($form, $form_state);

@@ -249,7 +249,7 @@ final class FontPluginManager extends DefaultPluginManager implements FontPlugin
     if (empty($definition['faces'])) {
       throw new PluginException(sprintf('Style font plugin property (%s) definition "local.faces" is required.', $plugin_id));
     }
-    foreach ($definition['faces'] as $delta => &$face) {
+    foreach ($definition['faces'] as &$face) {
       if (empty($face['src'])) {
         throw new PluginException(sprintf('Style font plugin property (%s) definition "faces.*.src" is required.', $plugin_id));
       }

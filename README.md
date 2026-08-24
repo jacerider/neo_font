@@ -5,6 +5,7 @@ CONTENTS OF THIS FILE
  * Requirements
  * Installation
  * Font Discovery
+ * Bad Declarations
  * Generic Fonts
  * Local Fonts
  * Google Fonts
@@ -60,6 +61,38 @@ Every definition supports these top-level properties:
  * spec      (for 'google') The Google Fonts `css2` spec string.
 
 
+BAD DECLARATIONS
+----------------
+
+One rule decides what a mistake in a declaration costs: can a font be built from
+what was written? If it cannot, the problem is a font declaration refusal. If it
+can, and only the author's expectation is wrong, it is a font declaration report.
+
+Nothing throws at discovery. A refused font is logged at error on the `neo_font`
+logger channel — naming the declaring extension, the font key as the YAML spells
+it, and the reason — and is then dropped: it does not exist for the rest of the
+request, so there is no `.font-{selector}` utility for it, no `@font-face` rule,
+no entry in the Google link, no option on the settings form, and no role mapping
+for a role that named it. Every other font is unaffected and the page still
+renders, so a mistyped face path costs a font rather than the site. A report is
+logged at warning and the font is built normally.
+
+Prepare is where a refusal is fatal. `drush neo:build` (and so `npm run deploy`)
+re-reads every declaration file and fails the build if any font cannot be built,
+listing every refusal it found in one message rather than the first — three wrong
+face paths take one build to find rather than three. A report does not fail the
+build. Discovery is cached, so a dropped font is logged once per cache rebuild
+rather than once per request: the log tells you after the fact, the build tells
+you now, which is why adding or editing a font is a build-time act.
+
+The conditions currently refused are: no 'family'; no 'type'; a 'type' outside
+'local', 'google' and 'generic'; a derived id equal to one of the five font role
+names; and, for a local font, a provider that is neither an installed module nor
+an installed theme, no 'faces', a face with no 'src', and a 'src' that is not on
+disk. The only report today is a 'selector' equal to a role name — see Font
+Roles.
+
+
 GENERIC FONTS
 -------------
 
@@ -82,8 +115,10 @@ LOCAL FONTS
 A local font definition looks as follows. The 'faces.weight', 'faces.style'
 and 'faces.unicode' properties are optional. Each 'faces.src' is resolved
 relative to the declaring module/theme and must exist on disk — a missing file
-throws an error during discovery. The 'generic' property should be set to one of
-the generic font ids ('sans', 'serif', 'mono' or 'cursive').
+drops that one font at discovery, logging the extension, the font and the full
+path the check looked at, and refuses the next build. See Bad Declarations. The
+'generic' property should be set to one of the generic font ids ('sans', 'serif',
+'mono' or 'cursive').
 
 Additional optional face keys: 'format' (e.g. "woff2"), 'ascent-override',
 'descent-override' and 'line-gap-override'. `font-display` defaults to 'swap';

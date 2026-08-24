@@ -22,10 +22,12 @@ Fonts flow through three stages: **discover → resolve → emit**.
   `YamlDiscovery` on the `neo.font` key (so `neo_font.neo.font.yml`,
   `mytheme.neo.font.yml`, …). This is a **YAML plugin** system, not config entities —
   there is no admin CRUD for fonts, only for which font fills each role.
-- **Resolve** — `processDefinition()` validates + normalises each font (id `_`→`-`,
-  defaults `label`/`selector`, resolves local `src` paths). `findDefinitions()` then
-  rewrites each font's `generic` from a *generic id* into that generic's raw CSS
-  fallback stack.
+- **Resolve** — `processDefinition()` checks + normalises each font (id `_`→`-`,
+  defaults `label`/`selector`, resolves local `src` paths). It **throws nothing**:
+  every check returns a `FontDeclarationProblem`, which is logged and — for a
+  refusal — drops that font from the set (see Gotchas). `findDefinitions()` then
+  rewrites each surviving font's `generic` from a *generic id* into that generic's
+  raw CSS fallback stack.
 - **Emit** — two `neo_build` event subscribers turn the definitions into CSS: build-
   time Tailwind `fontFamily` entries **and** runtime inline `.font-*` rules /
   `@font-face` / CSS vars. A separate `hook_page_attachments` adds Google CDN links.
@@ -80,16 +82,23 @@ Per-face keys (`type: local` only):
   becomes `'Family', <resolved stack>` (`FontDefault::getPropertyValue()`). Point a
   new script font at `cursive`, body/UI fonts at `sans`, etc.
 - **`local`** requires `faces` and every `src` must exist on disk at
-  `{provider path}/{src}` — a missing file throws a `PluginException` at discovery
-  (i.e. breaks cache rebuild), not silently.
+  `{provider path}/{src}` — a missing file is a **refusal**: that one font is logged
+  and dropped at discovery, and the next `drush neo:build` fails.
 - **`google`** contributes to the CDN `<link>` (see below) and needs no faces.
 
 ## Where things live (`src/`)
 
-- `FontPluginManager.php` — discovery + validation. `getSupportedTypes()`
+- `FontPluginManager.php` — discovery + checking. `getSupportedTypes()`
   (local/google/generic), `getSettingTypes()` (the 5 roles), `getGoogleUrl()` (builds
   the `fonts.googleapis.com/css2?family=…&display=swap` URL), `processDefinitionLocal()`
   (path resolution + existence check), and the `findDefinitions()` generic-flattening.
+  `findDeclarationProblems()` is the **single pass every check lives in** — it returns
+  problems instead of throwing, so `processDefinition()` (log + drop) and
+  `checkDeclarations()` (collect for prepare) can never disagree about what is wrong
+  with a file. `checkDeclarations()` re-reads the declaration **files**, never the
+  cached set: a refusal removes the definition, so a cache-served set would report a
+  clean site. `alterDefinitions()` is where a dropped font actually leaves the set —
+  before `hook_neo_font_info`, so an alter never sees a font that doesn't exist.
   The `$directory = 'public://neo-fonts'` property + its copy/delete code are currently
   **commented out** — local fonts are served straight from the extension path via
   `base_path()`, so that dir is vestigial; don't build on it.
@@ -101,6 +110,16 @@ Per-face keys (`type: local` only):
   `/admin/config/neo/font` (permission `administer neo_font`). Renders a preview table
   per type and a `<select>` per role → this is the **only** UI; it writes
   `neo_font.settings` (role → font id).
+- `FontDeclarationProblem.php` / `FontDeclarationSeverity.php` — one thing wrong with
+  one declaration: the extension, the font key as the YAML spells it, a message template
+  + context (so a logger records placeholders separately), and a severity. Built through
+  `::refusal()` / `::report()` — the constructor is private so picking a severity is
+  deliberate at every call site. `render()` is for the caller that needs a string.
+- `EventSubscriber/NeoBuildDeclarationEventSubscriber.php` (`onBuild`, priority **1000**)
+  — the prepare-time refusal. Holds the plugin manager and nothing else, runs ahead of
+  the two emitting subscribers, and throws one `\InvalidArgumentException` listing
+  **every** refusal (not the first) when `checkDeclarations()` finds any. Deliberately a
+  separate class, so the emitting subscribers keep injecting only the role resolver.
 - `EventSubscriber/NeoBuildEventSubscriber.php` (`onBuild`) — registers Tailwind
   `fontFamily[selector]` (concrete families) and `fontFamily[role] =
   var(--font-{role}-family)` for the configured font of each role. Feeds the **build**.
@@ -128,6 +147,16 @@ Per-face keys (`type: local` only):
 
 ## Gotchas
 
+- **A bad declaration costs the font, not the site.** A problem the font *cannot*
+  survive is a **font declaration refusal** — logged at error and dropped at discovery,
+  and fatal at prepare; a problem the font *does* survive is a **font declaration
+  report** — logged at warning, and prepare succeeds. That one rule decides every
+  check, existing and next; nothing in this module throws at discovery, because the
+  Google font link resolves the whole definition set inside `hook_page_attachments`, so
+  a throw there is a stack trace on every page render of every site. Refusals today:
+  no `family`, no `type`, an unsupported `type`, a derived id equal to a role name,
+  and (local) an unresolvable provider, no `faces`, a face with no `src`, a `src` not
+  on disk. Reports today: the selector–role collision below, and only it.
 - **`font-display` comes from the `display` face key.** `FontDefault::getFontFaces()`
   reads `$face['display'] ?? $face['swap'] ?? 'swap'` — the documented `display:` key
   wins, the legacy `swap:` key is a fallback, and the default is `swap`. (Historically
@@ -137,15 +166,17 @@ Per-face keys (`type: local` only):
   selector is e.g. `ui` writes the same key as the `ui` role and one of the two is
   silently lost. `processDefinition()` logs a warning on the injected `neo_font` logger
   channel naming the font, the selector and the role — right beside the id guard, which
-  still throws. It **reports rather than refuses on purpose**: the refusal lands in a
+  is a refusal. It **reports rather than refuses on purpose**: the refusal lands in a
   later release, so a site already carrying a colliding selector gets one version that
-  warns it before one that fails its cache rebuild. Only an explicitly declared
+  warns it before one that drops the font. Only an explicitly declared
   `selector:` can trip it — an undeclared selector takes the id, and an id equal to a
   role name is refused outright. The message deliberately doesn't say which entry wins;
   that is the role resolver's subject. No shipped example declares one.
 - **Fonts are a cache-backed YAML plugin.** Adding/removing a `*.neo.font.yml` entry or
-  a font file needs `drush cr` before it's discovered. A bad local `src` throws during
-  discovery and can wedge the cache rebuild until fixed.
+  a font file needs `drush cr` before it's discovered. Discovery is cached, so a dropped
+  font is logged **once per cache rebuild**, not once per request — a site whose cache
+  has been warm for a week has one old log line and a missing font. Prepare is the half
+  that tells the author now.
 - **Google via CDN vs local.** `type: google` pulls from the CDN at page-attach time
   (extra request + no `@font-face` control). The README's recommended path is to
   download the font and declare it as `type: local` instead — prefer that.

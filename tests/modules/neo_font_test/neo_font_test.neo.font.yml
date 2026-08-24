@@ -1,0 +1,60 @@
+# The font fixture module.
+#
+# Discovery, generic resolution and local-font processing are all about what
+# *extensions* declared, so none of them is reachable from a test until an
+# extension the test suite controls declares something. This file and the
+# companion `neo_font_test_theme` are that extension pair.
+#
+# Every declaration here must survive definition processing. One that does not
+# throws out of the whole discovery pass and takes every other kernel test in
+# the module with it, which is why the refusal paths are exercised by calling
+# definition processing directly instead of by shipping a broken font.
+#
+# The labels are deliberate. Discovery natural-sorts the whole definition set by
+# label, and a fixture labelled after its family would sort the same way under
+# any comparison, proving nothing. `Fixture Alpha 2` and `Fixture Alpha 10` only
+# come back in that order under natural comparison — a plain string comparison
+# puts 10 first — and the set as a whole comes back in an order matching neither
+# the declaration order nor a plain sort.
+
+# A generic carrying a raw fallback stack. `neo_font` ships four of its own —
+# sans, serif, mono, cursive — but a fixture that leaned on those could not tell
+# a resolved generic apart from a declared one, because the module's own stacks
+# are also what its own fonts resolve to. This stack is recognisable on sight
+# and belongs to nothing else.
+fixture_generic:
+  label: 'Fixture Alpha 2'
+  family: 'Fixture Generic'
+  type: generic
+  generic: "ui-fixture, 'Fixture Fallback', sans-serif"
+
+# A local font provided by a module. `faces.*.src` is resolved against the
+# provider's own directory and checked for existence — not for parseability —
+# so `fonts/fixture-local.woff2` is a deliberately empty placeholder rather
+# than a font binary nobody would ever render.
+fixture_local:
+  label: 'Fixture Alpha 1'
+  family: 'Fixture Local'
+  type: local
+  generic: sans
+  faces:
+    -
+      style: normal
+      weight: 400
+      src: fonts/fixture-local.woff2
+      format: woff2
+
+# A Google font carrying a spec, which is the half of the family value that
+# reaches the Google font link's query string.
+#
+# Its generic names the fixture generic above rather than one of `neo_font`'s,
+# so what discovery hands a consumer is a stack no other extension could have
+# supplied. The name is the raw discovery key, underscores and all — the derived
+# id swaps them for hyphens, but the resolution loop looks the generic up by
+# key, so `fixture-generic` here would silently resolve to nothing.
+fixture_google:
+  label: 'Fixture Alpha 10'
+  family: 'Fixture Google'
+  type: google
+  generic: fixture_generic
+  spec: 'wght@400;700'

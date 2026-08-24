@@ -1,0 +1,7 @@
+name: 'Neo Font test fixture theme'
+type: theme
+description: 'A theme that declares fonts, so the theme-provider half of font discovery has a subject. Installed only by tests.'
+package: Testing
+hidden: true
+base theme: false
+core_version_requirement: ^10.3 || ^11

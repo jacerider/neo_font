@@ -1,0 +1,7 @@
+name: 'Neo Font test fixtures'
+type: module
+description: 'Font declarations the neo_font test suite controls. Enabled only by tests.'
+package: Testing
+hidden: true
+dependencies:
+  - neo_font:neo_font

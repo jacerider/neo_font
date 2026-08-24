@@ -1,0 +1,24 @@
+# The font fixture theme.
+#
+# A theme declaring fonts is the real case on this site, and it is a different
+# code path from a module declaring them: local-font processing resolves the
+# provider through the theme handler rather than the module handler, and the
+# theme only reaches discovery at all once it is installed.
+#
+# The theme's local face points at an empty placeholder for the same reason the
+# module's does: existence is what the module checks.
+#
+# The label continues the fixture module's `Fixture Alpha …` series, so the
+# natural label sort has to interleave the two extensions rather than keep each
+# extension's fonts together.
+fixture_theme_local:
+  label: 'Fixture Alpha 3'
+  family: 'Fixture Theme Local'
+  type: local
+  generic: serif
+  faces:
+    -
+      style: normal
+      weight: 400
+      src: fonts/fixture-theme-local.woff2
+      format: woff2

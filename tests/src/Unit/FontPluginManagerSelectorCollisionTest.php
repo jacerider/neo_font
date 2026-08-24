@@ -7,8 +7,6 @@ namespace Drupal\Tests\neo_font\Unit;
 use Drupal\Core\Cache\CacheBackendInterface;
 use Drupal\Core\Extension\ModuleHandlerInterface;
 use Drupal\Core\Extension\ThemeHandlerInterface;
-use Drupal\Core\File\FileSystemInterface;
-use Drupal\Core\File\FileUrlGeneratorInterface;
 use Drupal\Tests\UnitTestCase;
 use Drupal\neo_font\FontDefault;
 use Drupal\neo_font\FontPluginManager;
@@ -124,8 +122,6 @@ final class FontPluginManagerSelectorCollisionTest extends UnitTestCase {
       '/var/www/html/web',
       $this->createMock(ModuleHandlerInterface::class),
       $this->createMock(ThemeHandlerInterface::class),
-      $this->createMock(FileSystemInterface::class),
-      $this->createMock(FileUrlGeneratorInterface::class),
       $this->createMock(CacheBackendInterface::class),
       $logger,
     );

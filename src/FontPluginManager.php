@@ -8,8 +8,6 @@ use Drupal\Component\Utility\NestedArray;
 use Drupal\Core\Cache\CacheBackendInterface;
 use Drupal\Core\Extension\ModuleHandlerInterface;
 use Drupal\Core\Extension\ThemeHandlerInterface;
-use Drupal\Core\File\FileSystemInterface;
-use Drupal\Core\File\FileUrlGeneratorInterface;
 use Drupal\Core\Plugin\DefaultPluginManager;
 use Drupal\Core\Plugin\Discovery\YamlDiscovery;
 use Drupal\Core\Plugin\Factory\ContainerFactory;
@@ -36,39 +34,11 @@ final class FontPluginManager extends DefaultPluginManager implements FontPlugin
   use StringTranslationTrait;
 
   /**
-   * The object that discovers plugins managed by this manager.
-   *
-   * @var \Drupal\Core\Plugin\Discovery\YamlDiscovery
-   */
-  protected $discovery;
-
-  /**
    * The theme handler.
    *
    * @var \Drupal\Core\Extension\ThemeHandlerInterface
    */
   protected $themeHandler;
-
-  /**
-   * The file system.
-   *
-   * @var \Drupal\Core\File\FileSystemInterface
-   */
-  protected $fileSystem;
-
-  /**
-   * The file url generator.
-   *
-   * @var \Drupal\Core\File\FileUrlGeneratorInterface
-   */
-  protected $fileUrlGenerator;
-
-  /**
-   * The directory.
-   *
-   * @var string
-   */
-  protected $directory = 'public://neo-fonts';
 
   /**
    * The plugin ids definition processing refused during the current pass.
@@ -108,10 +78,6 @@ final class FontPluginManager extends DefaultPluginManager implements FontPlugin
    *   The module handler.
    * @param \Drupal\Core\Extension\ThemeHandlerInterface $theme_handler
    *   The theme handler.
-   * @param \Drupal\Core\File\FileSystemInterface $file_system
-   *   The file system.
-   * @param \Drupal\Core\File\FileUrlGeneratorInterface $file_url_generator
-   *   The file url generator.
    * @param \Drupal\Core\Cache\CacheBackendInterface $cache_backend
    *   The discovery cache backend.
    * @param \Psr\Log\LoggerInterface $logger
@@ -122,30 +88,45 @@ final class FontPluginManager extends DefaultPluginManager implements FontPlugin
     private readonly string $appRoot,
     ModuleHandlerInterface $module_handler,
     ThemeHandlerInterface $theme_handler,
-    FileSystemInterface $file_system,
-    FileUrlGeneratorInterface $file_url_generator,
     CacheBackendInterface $cache_backend,
     private readonly LoggerInterface $logger,
   ) {
     $this->factory = new ContainerFactory($this);
     $this->moduleHandler = $module_handler;
     $this->themeHandler = $theme_handler;
-    $this->fileSystem = $file_system;
-    $this->fileUrlGenerator = $file_url_generator;
     $this->alterInfo('neo_font_info');
     $this->setCacheBackend($cache_backend, 'neo_font_plugins');
   }
 
   /**
    * {@inheritdoc}
+   *
+   * Builds through a local variable, and that is the whole reason this class no
+   * longer redeclares the `$discovery` property to narrow it. The base plugin
+   * manager declares the property untyped and documents it as a non-null
+   * discovery, which is not what it holds: nothing assigns it until the first
+   * call here, so the guard below is testing for the null it starts as. A
+   * subclass cannot correct that. A native nullable type is rejected outright —
+   * PHP will not let a subclass add a type to an untyped inherited property —
+   * and a nullable annotation is not covariant with the base's, so narrowing
+   * the property either misdescribes it or trades one static-analysis finding
+   * for another.
+   *
+   * Narrowing the local instead settles both halves at once. The `instanceof`
+   * is a real check against the base's declared discovery type rather than a
+   * tautology, and it is what proves the return type this method declares, so
+   * the property is left exactly as the base class owns it and every caller
+   * still gets the YAML discovery.
    */
   protected function getDiscovery(): YamlDiscovery {
-    if (!isset($this->discovery)) {
-      $this->discovery = new YamlDiscovery('neo.font', $this->moduleHandler->getModuleDirectories() + $this->themeHandler->getThemeDirectories());
-      $this->discovery->addTranslatableProperty('label', 'label_context');
-      $this->discovery->addTranslatableProperty('description', 'description_context');
+    $discovery = $this->discovery;
+    if (!$discovery instanceof YamlDiscovery) {
+      $discovery = new YamlDiscovery('neo.font', $this->moduleHandler->getModuleDirectories() + $this->themeHandler->getThemeDirectories());
+      $discovery->addTranslatableProperty('label', 'label_context');
+      $discovery->addTranslatableProperty('description', 'description_context');
+      $this->discovery = $discovery;
     }
-    return $this->discovery;
+    return $discovery;
   }
 
   /**
@@ -165,8 +146,6 @@ final class FontPluginManager extends DefaultPluginManager implements FontPlugin
    *   The font definitions, keyed by plugin id.
    */
   protected function findDefinitions(): array {
-    // $file_system = \Drupal::service('file_system');
-    // $file_system->deleteRecursive($this->directory);
     $this->droppedDefinitions = [];
     $definitions = parent::findDefinitions();
     foreach ($definitions as &$definition) {

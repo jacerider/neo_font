@@ -9,7 +9,7 @@ services:
 
   plugin.manager.neo_font:
     class: Drupal\neo_font\FontPluginManager
-    arguments: ['%app.root%', '@module_handler', '@theme_handler', '@file_system', '@file_url_generator', '@cache.discovery', '@logger.channel.neo_font']
+    arguments: ['%app.root%', '@module_handler', '@theme_handler', '@cache.discovery', '@logger.channel.neo_font']
 
   neo_font.role_resolver:
     class: Drupal\neo_font\FontRoleResolver

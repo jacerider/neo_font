@@ -10,8 +10,6 @@ use Drupal\Core\DependencyInjection\ContainerBuilder;
 use Drupal\Core\Extension\Extension;
 use Drupal\Core\Extension\ModuleHandlerInterface;
 use Drupal\Core\Extension\ThemeHandlerInterface;
-use Drupal\Core\File\FileSystemInterface;
-use Drupal\Core\File\FileUrlGeneratorInterface;
 use Drupal\Tests\UnitTestCase;
 use Drupal\neo_font\FontPluginManager;
 use PHPUnit\Framework\Attributes\Group;
@@ -192,8 +190,6 @@ final class FontDeclarationDropTest extends UnitTestCase {
       $root,
       $module_handler,
       $theme_handler,
-      $this->createMock(FileSystemInterface::class),
-      $this->createMock(FileUrlGeneratorInterface::class),
       $this->createMock(CacheBackendInterface::class),
       $this->collectingLogger(),
     );

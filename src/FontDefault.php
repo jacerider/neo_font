@@ -82,7 +82,20 @@ final class FontDefault extends PluginBase implements FontInterface {
       $ascentOverride = (string) ($face['ascent-override'] ?? '');
       $descentOverride = (string) ($face['descent-override'] ?? '');
       $lineGapOverride = (string) ($face['line-gap-override'] ?? '');
-      $key = $family . '-' . $weight . '-' . $style . '-' . $display . '-' . $range;
+      // Every property that identifies the rule belongs in the key. The three
+      // overrides are rule properties like the rest, so two faces declaring
+      // different metrics are two rules: merging them would serve the second
+      // face's file under the first face's metrics and drop the difference.
+      $key = implode('-', [
+        $family,
+        $weight,
+        $style,
+        $display,
+        $range,
+        $ascentOverride,
+        $descentOverride,
+        $lineGapOverride,
+      ]);
       if (isset($faces[$key])) {
         $faces[$key]['src'] .= ",\nurl('" . $face['src'] . "')" . ($face['format'] ?? '' ? " format('" . $face['format'] . "')" : '');
         continue;

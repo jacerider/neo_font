@@ -218,11 +218,8 @@ final class FontPluginManager extends DefaultPluginManager implements FontPlugin
       ]);
     }
 
-    // Skip generic font types.
-    if ($definition['type'] === 'generic') {
-      return;
-    }
-
+    // Only the types with a case here are processed further; a generic font
+    // is terminal and falls straight through.
     switch ($definition['type']) {
       case 'local':
         $this->processDefinitionLocal($definition, (string) $plugin_id);
@@ -257,8 +254,13 @@ final class FontPluginManager extends DefaultPluginManager implements FontPlugin
         throw new PluginException(sprintf('Style font plugin property (%s) definition "faces.*.src" is required.', $plugin_id));
       }
       $src = $base_path . '/' . $face['src'];
-      if (!file_exists($this->appRoot . '/' . $src)) {
-        throw new PluginException(sprintf('Style font plugin property (%s) references a font file that does not exist. (%s)', $plugin_id, $src));
+      // Name the path the check actually used. The declared fragment is
+      // already in front of whoever wrote it; what they cannot see is which
+      // directory it resolved against, which is the whole reason the file was
+      // not found.
+      $absolute = $this->appRoot . '/' . $src;
+      if (!file_exists($absolute)) {
+        throw new PluginException(sprintf('Style font plugin property (%s) references a font file that does not exist. (%s)', $plugin_id, $absolute));
       }
       $face['src'] = base_path() . $src;
     }

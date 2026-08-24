@@ -20,17 +20,13 @@ use PHPUnit\Framework\Attributes\Group;
  * over.
  *
  * Three behaviours live here. The **font stack** is the quoted family followed
- * by the generic's fallback stack. **Font faces** are merged on a five-part key
- * and their sources concatenated. And the admin preview is the only place a
- * **font selector** reaches an admin-facing render array.
+ * by the generic's fallback stack. **Font faces** are merged on the eight
+ * properties that identify a rule and their sources concatenated. And the admin
+ * preview is the only place a **font selector** reaches an admin-facing render
+ * array.
  *
- * Two of the face behaviours are characterised, not endorsed. `display` honours
- * a legacy `swap` key as an alias before falling back to `swap` as a value; and
- * the three override properties sit outside the merge key, so two faces
- * differing only in an override merge and the first one's overrides win. Both
- * are asserted as they stand — this suite changes no production code, and a
- * behaviour that turns out to be wrong is a backlog candidate rather than an
- * edit here.
+ * One face behaviour is characterised rather than endorsed: `display` honours a
+ * legacy `swap` key as an alias before falling back to `swap` as a value.
  */
 #[Group('neo_font')]
 final class FontDefaultTest extends UnitTestCase {
@@ -56,7 +52,7 @@ final class FontDefaultTest extends UnitTestCase {
   ];
 
   /**
-   * The three override properties, which sit outside the merge key.
+   * The three override properties, which are part of the merge key.
    *
    * @var array<string, string>
    */
@@ -159,7 +155,7 @@ final class FontDefaultTest extends UnitTestCase {
   /**
    * Tests that faces agreeing on the whole merge key become one rule.
    */
-  public function testMergesFacesAgreeingOnAllFiveKeyPartsIntoOneRuleWithBothSources(): void {
+  public function testMergesFacesAgreeingOnEveryKeyPartIntoOneRuleWithBothSources(): void {
     $font = self::font([
       'family' => 'Aleo Sans',
       'faces' => [
@@ -170,11 +166,11 @@ final class FontDefaultTest extends UnitTestCase {
 
     $faces = $font->getFontFaces();
 
-    $this->assertCount(1, $faces, 'Two faces agreeing on all five key parts become one rule.');
+    $this->assertCount(1, $faces, 'Two faces agreeing on every key part become one rule.');
     $this->assertSame(
-      ['Aleo Sans-400-normal-swap-U+0000-00FF'],
+      ['Aleo Sans-400-normal-swap-U+0000-00FF---'],
       array_keys($faces),
-      'The rule is keyed on family, weight, style, display and unicode range.'
+      'The rule is keyed on family, weight, style, display, unicode range and the three overrides.'
     );
 
     $rule = reset($faces);
@@ -185,9 +181,17 @@ final class FontDefaultTest extends UnitTestCase {
     );
 
     // Disagreeing on any one part of the key is enough to keep two faces apart.
-    // Family is the fifth part and is read from the definition rather than the
-    // face, so every face of one font agrees on it by construction.
-    foreach (['weight' => 700, 'style' => 'italic', 'display' => 'block', 'unicode' => 'U+0100-024F'] as $part => $value) {
+    // Family is part of the key too, but it is read from the definition rather
+    // than the face, so every face of one font agrees on it by construction.
+    foreach ([
+      'weight' => 700,
+      'style' => 'italic',
+      'display' => 'block',
+      'unicode' => 'U+0100-024F',
+      'ascent-override' => '95%',
+      'descent-override' => '18%',
+      'line-gap-override' => '4%',
+    ] as $part => $value) {
       $split = self::font([
         'family' => 'Aleo Sans',
         'faces' => [
@@ -283,48 +287,70 @@ final class FontDefaultTest extends UnitTestCase {
   }
 
   /**
-   * Tests that faces differing only in an override merge, first one winning.
+   * Tests that faces differing only in an override stay two rules.
    *
-   * Characterised, not endorsed. The three override properties sit outside the
-   * merge key, so two faces that a reader would call different are the same
-   * face to the merge, and the second one's overrides are dropped on the floor
-   * along with the rest of it. This suite changes no production code; the
-   * behaviour is recorded as a backlog candidate rather than repaired here, and
-   * this test is what a repair would have to change on purpose.
+   * The three override properties are part of the merge key, so two faces a
+   * reader would call different are two rules to the merge as well. They were
+   * once outside it: two such faces merged, the first one's metrics were kept,
+   * and the second one's file was served under them while its own metrics were
+   * dropped on the floor. Each rule now carries the metrics it was declared
+   * with, and its own source.
    */
-  public function testMergesFacesDifferingOnlyInAnOverrideKeepingTheFirstsOverrides(): void {
+  public function testKeepsFacesDifferingOnlyInAnOverrideAsSeparateRules(): void {
+    $second = [
+      'ascent-override' => '95%',
+      'descent-override' => '18%',
+      'line-gap-override' => '4%',
+    ];
+
     $font = self::font([
       'family' => 'Aleo Sans',
       'faces' => [
         self::face('/fonts/first.woff2', self::LATIN_400 + self::OVERRIDES),
-        self::face('/fonts/second.woff2', self::LATIN_400 + [
-          'ascent-override' => '95%',
-          'descent-override' => '18%',
-          'line-gap-override' => '4%',
-        ]),
+        self::face('/fonts/second.woff2', self::LATIN_400 + $second),
       ],
     ]);
 
-    $faces = $font->getFontFaces();
+    $faces = array_values($font->getFontFaces());
 
     $this->assertCount(
-      1,
+      2,
       $faces,
-      'The overrides sit outside the merge key, so faces differing only there merge.'
+      'The overrides are part of the merge key, so faces differing there stay apart.'
     );
 
-    $rule = reset($faces);
-    $this->assertSame('90%', $rule['ascent-override'], "The first face's ascent override wins.");
-    $this->assertSame('22%', $rule['descent-override'], "The first face's descent override wins.");
-    $this->assertSame('0%', $rule['line-gap-override'], "The first face's line-gap override wins.");
+    // Each rule keeps the metrics it was declared with — the second face's are
+    // no longer lost to the first face's rule.
+    foreach ([0 => self::OVERRIDES, 1 => $second] as $index => $overrides) {
+      foreach ($overrides as $property => $value) {
+        $this->assertSame(
+          $value,
+          $faces[$index][$property],
+          sprintf('Rule %d keeps its own %s.', $index, $property)
+        );
+      }
+    }
 
-    // The second face is not lost entirely — its source is concatenated onto
-    // the merged rule, which is how a face with different metrics ends up
-    // served under the first face's metrics.
+    // And each keeps its own source, rather than one rule carrying both files
+    // under one set of metrics.
+    $this->assertSame("url('/fonts/first.woff2') format('woff2')", $faces[0]['src']);
+    $this->assertSame("url('/fonts/second.woff2') format('woff2')", $faces[1]['src']);
+
+    // Faces agreeing on their overrides still merge: it is disagreement that
+    // splits them, not the presence of an override.
+    $agreeing = self::font([
+      'family' => 'Aleo Sans',
+      'faces' => [
+        self::face('/fonts/a.woff2', self::LATIN_400 + self::OVERRIDES),
+        self::face('/fonts/b.woff2', self::LATIN_400 + self::OVERRIDES),
+      ],
+    ])->getFontFaces();
+
+    $this->assertCount(1, $agreeing, 'Faces agreeing on their overrides merge as before.');
     $this->assertSame(
-      "url('/fonts/first.woff2') format('woff2'),\nurl('/fonts/second.woff2') format('woff2')",
-      $rule['src'],
-      "The second face's source joins the rule its overrides did not reach."
+      "url('/fonts/a.woff2') format('woff2'),\nurl('/fonts/b.woff2') format('woff2')",
+      reset($agreeing)['src'],
+      'The merged rule carries both sources, in declaration order.'
     );
   }
 

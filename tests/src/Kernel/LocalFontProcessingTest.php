@@ -241,9 +241,15 @@ final class LocalFontProcessingTest extends KernelTestBase {
       // tells them which directory the module went looking in.
       $this->assertStringContainsString($path . '/' . $missing, $message, 'The refusal names the resolved path it looked for.');
 
-      // Resolved against the Drupal root, not the filesystem root the check
-      // itself used and not the base path the rewrite would have added.
-      $this->assertStringNotContainsString($this->root, $message, 'The named path is relative to the Drupal root.');
+      // And it names the path the check itself used, absolute against the app
+      // root, rather than a Drupal-root-relative rendering of it: a message
+      // naming a path other than the one tested sends the reader looking in
+      // the wrong directory.
+      $this->assertStringContainsString(
+        $this->root . '/' . $path . '/' . $missing,
+        $message,
+        'The refusal names the absolute path the existence check used.'
+      );
     }
   }
 

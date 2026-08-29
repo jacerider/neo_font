@@ -2,7 +2,7 @@
 
 **Status:** accepted · **Date:** 2026-08-23
 **Context:** `neo_font` — definition processing, the font declaration check, every future check
-**Issue:** jacerider/neo_font#5  ·  **Plan:** `neo-font-declaration-refusal` on wps
+**Issue:** jacerider/neo_font#5
 
 **Decision.** A **font declaration refusal** — a problem that makes a font impossible to build — has
 two effects: at discovery the definition is logged at error and dropped, so it stops existing for
